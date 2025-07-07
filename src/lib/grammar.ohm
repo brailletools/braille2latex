@@ -4,8 +4,8 @@ BrailleGrammar {
   Equation =   InlineNemeth 
   StartNemeth = "_%"
   StopNemeth = "_:"
-  Blank = (" " | "\t")
-  EndLine = "\n" 
+  Blank = (~EndLine space)
+  EndLine = "_*_" 
   EndParagraph = EndLine (Blank* EndLine)+ Blank*
   Text = (~StartNemeth ~StopNemeth ~EndParagraph any)+
   Paragraph =  (Text InlineNemeth | InlineNemeth Text | Text Text?)+ 
