@@ -1,4 +1,13 @@
+/** 
+* TODO: This constant is for a horrible embarassing hack to replace newlines with a character code 
+* that is hopefully unique temporarily during parsing. To be fixed I HOPE!
+*/
 export	const NEWLINESYM = "_*_";
+
+/**
+ * Mapping from ASCII characters to Braille Unicode characters.
+ * This mapping is based on the Braille ASCII standard.
+ */
 const mapping = {
 	'\n': '\n',
 	' ': '⠀',
@@ -93,6 +102,11 @@ const mapping = {
 	_: '⠸'
 };
 
+/**
+ * Converts from ASCII characters to Braille Unicode characters.
+ * @param {*} input_str 
+ * @returns Braille Unicode string
+ */
 export function ascii2Braille(input_str) {
 	let out = [];
 	for (const input_char of input_str) {
