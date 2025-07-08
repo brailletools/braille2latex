@@ -1,129 +1,90 @@
-    import Abraham from '$lib/abraham.min.js'; // the Desmos Abraham library 
-    import { ascii2Braille } from './brailleMap'; // import the ASCII to Braille mapping function
-	import * as ohm from 'ohm-js'; // import the ohm-js library for parsing
-	import grammarFile from '$lib/grammar.ohm?raw'; // import the grammar file for parsing
-    
+import Abraham from '$lib/abraham.min.js'; // the Desmos Abraham library 
+import { ascii2Braille } from './brailleMap'; // import the ASCII to Braille mapping function
+import * as ohm from 'ohm-js'; // import the ohm-js library for parsing
+import grammarBraille from '$lib/grammarBraille.ohm?raw'; // import the grammar file for parsing
+import grammarInner from '$lib/grammarInner.ohm?raw'; // import the grammar file for parsing
+
+const P = (content) => ({ type: 'P', content })
+const E = (content) => ({ type: 'E', content })
+
+/**
+ * A parser is a tool that takes a text file or string and breaks it down into its
+ * component parts, according to a set of rules defined in a grammar. This allows us
+ * to analyze the structure of the text and extract meaningful information from it.
+ * In this case, we are using the ohm-js library to create a parser from the grammar files.
+ * The parser will be used to parse Braille text and convert it into LaTeX format.
+ */
+export function parse_blocks(text) {
+	let blocks = parse_blocks_outer(text);
+	blocks.map(block => {
+		if ((block.type = 'P')
+			|| (block.type = 'E')
+			|| (block.type = 'N')) {
+			console.log("parsing block", block.toString());
+			let block = parse_blocks_inner(block);
+			console.log("match", block);
+			return block;
+			}
+		return block;
+	});
+
+function parse_blocks_outer(text) {}
+	let parser = {}
 	/**
-	 * A grammar specifies how a text file or string is organized (such as
-	 * the fact that two newlines before and after math should be interpreted as 
-	 * an equation in latex). Using the grammar, we can parse a file or string
-	 * into a syntax tree, which is a structured representation of the text.
+	  * A grammar specifies how a text file or string is organized (such as
+	  * the fact that two newlines before and after math should be interpreted as 
+	  * an equation in latex). Using the grammar, we can parse a file or string
+	  * into a syntax tree, which is a structured representation of the text.
 	 */
-	export const grammar = ohm.grammar(grammarFile); // create the grammar from the file
-
-	export const semantics = grammar.createSemantics(); // create the semantics for the grammar
-	
+	parser.grammar = ohm.grammar(grammarBraille); // create the grammar from the file
+	parser.semantics = parser.grammar.createSemantics();
 	/**
-	 * Semantics define how to interpret the syntax tree. Specifically, they allow 
-	 * us to walk through the syntax tree and produce a new string, which is 
-	 * the LaTeX representation of the original text.
-	 */
-	semantics.addOperation('eval', {
-		/**
-		 * This is the root of the semantics. It evaluates the entire syntax tree
-		 * and returns the LaTeX representation of the text.
-		 * @param {*} _spaces 
-		 * @param {*} paragraphs 
-		 * @param {*} _newlines 
-		 * @returns 
-		 */
-		Braille(_spaces, paragraphs, _newlines) {
-			console.debug('Braille: eval paragraphs');
-			return paragraphs.children.map((paragraph) => paragraph.eval()).join('\n\n');
-		},
-
-		/**
-		 * This specifies that Braille recognized as inline Nemeth code should be evaluated 
-		 * should be converted to LaTeX math and surrounded by dollar signs to indicate
-		 * an inline math expression.
-		 * @param {*} _open 
-		 * @param {*} nemeth 
-		 * @param {*} _close 
-		 * @returns 
-		 */
-		InlineNemeth(_open, nemeth, _close) {
-			console.debug('InlineNemeth: eval text');
-			let latex = Abraham.nemethToLatex(ascii2Braille(nemeth.eval())).value;
-			console.debug(latex);
-			return '$' + latex + '$';
-		},
-
-		/**
-		 * This specifies that Braille recognized as Nemeth code and surrounded by
-		 * newlines should be evaluated as a LaTeX equation instead of inline math.
-		 * @param {*} nemeth 
-		 * @returns 
-		 */
-		Equation(nemeth) {
-			console.debug('Equation: eval nemeth');
-			return '$' + nemeth.eval() + '$';
-		},
-
-		/**
-		 * This essentially says that a single line break in Braille should 
-		 * be a single newline in LaTeX (which will be ignored in LaTeX).
-		 * @param {*} _ 
-		 * @returns 
-		 */
-		EndLine(_) {
-			console.debug('EndLine');
-			return '\n';
-		},
-
-		/**
-		 * This specifies that a paragraph (Braille with two newlines before and after
-		 * it) should be converted to two newlines in LaTeX, which will create a new paragraph.
-		 * @param {*} _line 
-		 * @param {*} _space 
-		 * @param {*} _line2 
-		 * @param {*} _spaces 
-		 * @returns 
-		 */
-		EndParagraph(_line, _space, _line2, _spaces) {
-			console.debug('EndParagraph');
-			return '\n\n';
-		},
-
-		/**
-		 * This specifies that Braille text should not be changed in any way
-		 * @param {*} txt 
-		 * @returns 
-		 */
-		Text(txt) {
-			console.debug('Text');
-			let latex = txt.sourceString;
-			console.debug(latex);
-			return latex;
-		},
-
-		/**
-		 * This specifies that a paragraph is made up of one ore more text or Nemeth items
-		 * and that these items should be evaluated and joined together with a space between them.
-		 * @param {*} items1 
-		 * @param {*} items2 
-		 * @returns 
-		 */
-		Paragraph(items1, items2) {
-			console.debug('Paragraph: eval children');
-			let contents = items1.children.map((item1, i) => item1.eval() + items2.children[i].eval());
-			console.debug('paragraph: items1');
-			console.debug(items1.children.map((item1) => item1.eval()));
-			console.debug('paragraph: items2');
-			console.debug(items2.children.map((item2) => item2.eval()));
-			console.debug('paragraph: end');
-
-			return contents.join(' ');
-		},
-
-		/**
-		 * This specifies that anything else in the syntax tree should be evaluated
-		 * by calling the eval method on each child. This is a catch-all for any other
-		 * type of node in the syntax tree that we haven't explicitly defined.
-		 * @param  {...any} children 
-		 * @returns 
-		 */
+	  * Semantics define how to interpret the syntax tree. Specifically, they allow 
+	  * us to walk through the syntax tree and produce a new string, which is 
+	  * the LaTeX representation of the original text.
+	  */
+	parser.semantics.addOperation('blocks', {
+		_terminal() { return this.sourceString },
+		Blank: (a, b) => ({ type: 'BLANK' }),
+		Paragraph: a => P(a.sourceString),
+		Equation: (_1, a, _2, _) => E(a.blocks().join("")),
 		_iter(...children) {
-			console.debug('iter: eval children');
-			return children.map((c) => c.eval());
+			return children.map(c => c.blocks().join(""));
+		}
+	})
+
+	let match = parser.grammar.match(text + "\n\n");
+	console.log("parsing text", match.toString());
+	return match;
+}
+
+function parse_blocks_inner(block) {
+	let parser = {};
+
+	parser.grammar = ohm.grammar(grammarInner); // create the grammar from the file
+	parser.semantics = parser.grammar.createSemantics(); // create the semantics for the grammar
+
+	parser.semantics.addOperation('content', {
+		_terminal() { return this.sourceString },
+		Plain(a) { return ['Plain', a.content().join("")] },
+		Bold(_1, a, _2) { return ['Bold', "\textbf{" + a.content().join("") + "}"] },
+		Italic(_1, a, _2) { return ['Italic', "\textit{" + a.content().join("") + "}"] },
+		InlineNemeth(_1, a, _2) {
+			return ['N',
+				N("$" + Abraham.nemethToLatex(ascii2Braille(a.content().join(""))) + "$")]
 		}
 	});
+
+	let match = parser.semantics(match);
+	console.log("parsing text", match.toString());
+	if (match.failed()) {
+		l("match failed on block", block)
+		block.content = [['plain', block.content]]
+	} else {
+		block.content = parser.semantics(match).content()
+	}
+	return block
+}
+
+
+
