@@ -15,6 +15,7 @@
 		InlineNemeth(_open, nemeth, _close) {
 			console.debug('InlineNemeth: eval text');
 			let latex = Abraham.nemethToLatex(ascii2Braille(nemeth.eval())).value;
+			if (latex.isError) throw new Error("Invalid Nemeth");
 			console.debug(latex);
 			return '$' + latex + '$';
 		},
