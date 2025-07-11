@@ -1,0 +1,13 @@
+BrailleGrammar {
+  Braille = Blank* ((Paragraph | Equation) (EndParagraph | end))* 
+  InlineNemeth = StartNemeth Text StopNemeth
+  Equation =   InlineNemeth 
+  StartNemeth = "_%"
+  StopNemeth = "_:"
+  Blank = (~EndLine space)
+  EndLine = ("\\n" | "\\r\\n" | "\\r") // End of line can be \n, \r\n, or \r
+  EndParagraph = EndLine (Blank* EndLine)+ Blank*
+  Text = (~StartNemeth ~StopNemeth ~EndParagraph any)+
+  Paragraph =  (Text InlineNemeth | InlineNemeth Text | Text Text?)+ 
+}
+  
