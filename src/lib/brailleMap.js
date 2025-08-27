@@ -1,11 +1,5 @@
 import Abraham from '$lib/abraham.min.js'; // the Desmos Abraham library 
 
-/** 
-* TODO: This constant is for a horrible embarassing hack to replace newlines with a character code 
-* that is hopefully unique temporarily during parsing. To be fixed I HOPE!
-*/
-export const NEWLINESYM = "_*_";
-
 /**
  * Mapping from ASCII characters to Braille Unicode characters.
  * This mapping is based on the Braille ASCII standard.
@@ -109,7 +103,7 @@ const mapping = {
  * @param {*} input_str 
  * @returns Braille Unicode string
  */
-function ascii2Braille(input_str) {
+export function ascii2Braille(input_str) {
 	let out = '';
 	for (const input_char of input_str) {
 		out += mapping[input_char] || '';
@@ -122,7 +116,7 @@ function ascii2Braille(input_str) {
 export function nemeth_to_latex(text) {
 	// convert the data to Braille
 	text = text.trim();
-	console.log("converting math" + text);
+	console.info("converting math" + text);
 	let latex = '';
 	let braille = '';
 	try {
