@@ -99,9 +99,14 @@ const mapping = {
 };
 
 // Create reverse mapping from Braille to ASCII
-const reverseMapping = Object.fromEntries(
-	Object.entries(mapping).map(([key, value]) => [value, key])
-);
+// Process in a way that prefers lowercase letters when both upper/lower map to same braille
+const reverseMapping = {};
+Object.entries(mapping).forEach(([key, value]) => {
+	// Only set if not already mapped, or if this is lowercase (prefer lowercase)
+	if (!reverseMapping[value] || /[a-z]/.test(key)) {
+		reverseMapping[value] = key;
+	}
+});
 
 /**
  * Converts from ASCII characters to Braille Unicode characters.
@@ -124,7 +129,16 @@ export function ascii2Braille(input_str) {
 export function braille2Ascii(input_str) {
 	let out = '';
 	for (const input_char of input_str) {
-		out += reverseMapping[input_char] || input_char;
+		const mapped = reverseMapping[input_char];
+		if (mapped !== undefined) {
+			out += mapped;
+		} else if (input_char.match(/[\u2800-\u28FF]/)) {
+			// Unmapped braille character - log and skip
+			console.warn('Unmapped braille character:', input_char, 'U+' + input_char.charCodeAt(0).toString(16).toUpperCase());
+		} else {
+			// Not braille, keep as-is (space, newline, etc.)
+			out += input_char;
+		}
 	}
 	return out;
 }
