@@ -98,6 +98,11 @@ const mapping = {
 	_: '⠸'
 };
 
+// Create reverse mapping from Braille to ASCII
+const reverseMapping = Object.fromEntries(
+	Object.entries(mapping).map(([key, value]) => [value, key])
+);
+
 /**
  * Converts from ASCII characters to Braille Unicode characters.
  * @param {*} input_str 
@@ -107,6 +112,19 @@ export function ascii2Braille(input_str) {
 	let out = '';
 	for (const input_char of input_str) {
 		out += mapping[input_char] || '';
+	}
+	return out;
+}
+
+/**
+ * Converts from Braille Unicode characters to ASCII characters.
+ * @param {*} input_str 
+ * @returns ASCII string
+ */
+export function braille2Ascii(input_str) {
+	let out = '';
+	for (const input_char of input_str) {
+		out += reverseMapping[input_char] || input_char;
 	}
 	return out;
 }
