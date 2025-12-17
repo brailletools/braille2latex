@@ -1,10 +1,10 @@
 import { nemeth_to_latex, ascii2Braille } from './brailleMap';
 import liblouis from 'liblouis/easy-api';
-import { assets, base } from '$app/paths';
+import { base } from '$app/paths';
 
 // Includes tables: unicode.dis, en-ueb-g2.ctb, en-ueb-g1.ctb, en-ueb-chardefs.uti, latinLetterDef8Dots.uti, en-ueb-math.ctb, braille-patterns.cti
-const capi_url = base + assets + 'liblouis/build-tables-embeded-root-utf16.js';
-const easyapi_url = base + assets + 'liblouis/easy-api.js';
+const capi_url = base + '/liblouis/build-tables-embeded-root-utf16.js';
+const easyapi_url = base + '/liblouis/easy-api.js';
 
 const asyncLiblouis = new liblouis.EasyApiAsync({
 	capi: capi_url,
