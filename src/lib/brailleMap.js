@@ -148,22 +148,32 @@ export function braille2Ascii(input_str) {
 export function nemeth_to_latex(text) {
 	// convert the data to Braille
 	text = text.trim();
+	if (!text) return '';
+	
 	console.info("converting math" + text);
 	let latex = '';
 	let braille = '';
+	
 	try {
 		braille = ascii2Braille(text);
 	} catch (error) {
-		console.log("Ascii2Braille failed: " + text);
-		console.log(error)
+		console.error("Ascii2Braille failed: " + text);
+		console.error(error);
+		return text; // Fallback to original text
 	}
 
 	try {
-		latex = Abraham.nemethToLatex(braille).value;
+		const result = Abraham.nemethToLatex(braille);
+		latex = result.value || '';
+		
 	} catch (error) {
-		console.log("Braille2latex: " + braille);
-		console.log(error)
+		console.error("Braille2latex failed for braille: " + braille);
+		console.error("Original text: " + text);
+		console.error(error);
+		// Fallback: try to do basic substitution
+		latex = text.replace(/\.k/g, '=').replace(/_/g, ' ');
 	}
+	
 	console.log(latex);
 	return latex;
 }

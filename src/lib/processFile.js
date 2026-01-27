@@ -3,8 +3,8 @@ import liblouis from 'liblouis/easy-api';
 import { base } from '$app/paths';
 
 // Includes tables: unicode.dis, en-ueb-g2.ctb, en-ueb-g1.ctb, en-ueb-chardefs.uti, latinLetterDef8Dots.uti, en-ueb-math.ctb, braille-patterns.cti
-const capi_url = base + '/liblouis/build-tables-embeded-root-utf16.js';
-const easyapi_url = base + '/liblouis/easy-api.js';
+const capi_url = base + 'liblouis/build-tables-embeded-root-utf16.js';
+const easyapi_url = base + 'liblouis/easy-api.js';
 
 const asyncLiblouis = new liblouis.EasyApiAsync({
 	capi: capi_url,
@@ -109,7 +109,23 @@ class Element {
 				this.add_latex('\n\n');
 				break;
 			case tokens.NEMETH:
-				this.add_latex('$' + nemeth_to_latex(this.value || '') + '$');
+				// Handle multi-line Nemeth blocks as display math
+				const nemethLines = (this.value || '').split('\n').filter(line => line.trim());
+				if (nemethLines.length > 1) {
+					// Multi-line: use display math
+					this.add_latex('$$');
+					nemethLines.forEach((line, idx) => {
+						const latex = nemeth_to_latex(line.trim());
+						if (latex) {
+							if (idx > 0) this.add_latex('\\\\\n');
+							this.add_latex(latex);
+						}
+					});
+					this.add_latex('$$');
+				} else {
+					// Single line: inline math
+					this.add_latex('$' + nemeth_to_latex(this.value || '') + '$');
+				}
 				break; // inline math from Nemeth
 			case tokens.EQUATION:
 				this.add_latex('$');
@@ -177,9 +193,9 @@ function lex(text) {
 		let currentToken = paraNode;
 
 		const lines = para.split('\n');
-		lines.forEach(line => {
+		lines.forEach((line, lineIndex) => {
 			const words = line.split(' ').filter(Boolean);
-			words.forEach(word => {
+			words.forEach((word, wordIndex) => {
 				if (!word) return;
 
 				if (word.length === 1) {
@@ -207,7 +223,10 @@ function lex(text) {
 						firsttwo !== tokenStrings.ITALIC
 					) {
 						needsStringToken = true;
-						currentToken = currentToken.push(tokens.STRING);
+						// Only create a new STRING token if we're not already in one
+						if (currentToken.token !== tokens.STRING) {
+							currentToken = currentToken.push(tokens.STRING);
+						}
 					}
 				}
 
@@ -241,7 +260,8 @@ function lex(text) {
 					if (currentToken.get_value().endsWith(' ')) {
 						currentToken.value = currentToken.value.slice(0, -1);
 					}
-					currentToken = currentToken.parent;
+					// Don't close the STRING token yet - keep it open for consecutive words
+					// currentToken = currentToken.parent;
 				}
 
 				if (
@@ -256,6 +276,11 @@ function lex(text) {
 
 			if (currentToken.get_value && currentToken.get_value().endsWith(' ')) {
 				currentToken.value = currentToken.value.slice(0, -1);
+			}
+			
+			// Add newline after each line within NEMETH blocks (but not after last line)
+			if (lineIndex < lines.length - 1 && currentToken.token === tokens.NEMETH) {
+				currentToken.add_character('\n');
 			}
 		});
 

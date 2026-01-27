@@ -1,5 +1,7 @@
 /**
  * Reads a file from an input element and calls a callback with the file's content and name.
+ * For BRL files, assumes the content is ASCII braille and passes it through.
+ * For BRF files, reads as UTF-8 text.
  * @param {*} event 
  * @param {*} callback 
  */
@@ -11,7 +13,8 @@ export function handleFileChange(event, callback) {
             reader.onload = () => {
                 callback(reader.result, file.name);
             };
-            reader.readAsText(file);
+            // Always read as UTF-8 - works for both BRF and BRL files
+            reader.readAsText(file, 'UTF-8');
         }
 }
 
