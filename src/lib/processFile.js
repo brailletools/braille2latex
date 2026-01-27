@@ -4,9 +4,9 @@ import liblouis from 'liblouis/easy-api';
 import { base } from '$app/paths';
 
 // Use liblouis 3.2.0-rc with tables loaded on demand from static/liblouis/tables
-const capi_url = base + 'liblouis/build-no-tables-utf16.js';
-const easyapi_url = base + 'liblouis/easy-api.js';
-const tables_url = base + 'liblouis/tables/';
+const capi_url = base + '/liblouis/build-no-tables-utf16.js';
+const easyapi_url = base + '/liblouis/easy-api.js';
+const tables_url = base + '/liblouis/tables/';
 
 const asyncLiblouis = new liblouis.EasyApiAsync({
 	capi: capi_url,
