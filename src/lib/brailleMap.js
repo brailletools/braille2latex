@@ -1,179 +1,86 @@
 import Abraham from '$lib/abraham.min.js'; // the Desmos Abraham library 
 
-/**
- * Mapping from ASCII characters to Braille Unicode characters.
- * This mapping is based on the Braille ASCII standard.
- */
-const mapping = {
-	'\n': '\n',
-	' ': '⠀',
-	'!': '⠮',
-	'"': '⠐',
-	'#': '⠼',
-	$: '⠫',
-	'%': '⠩',
-	'&': '⠯',
-	"'": '⠄',
-	'(': '⠷',
-	')': '⠾',
-	'*': '⠡',
-	'+': '⠬',
-	',': '⠠',
-	'-': '⠤',
-	'.': '⠨',
-	'/': '⠌',
-	'0': '⠴',
-	'1': '⠂',
-	'2': '⠆',
-	'3': '⠒',
-	'4': '⠲',
-	'5': '⠢',
-	'6': '⠖',
-	'7': '⠶',
-	'8': '⠦',
-	'9': '⠔',
-	':': '⠱',
-	';': '⠰',
-	'<': '⠣',
-	'=': '⠿',
-	'>': '⠜',
-	'?': '⠹',
-	'@': '⠈',
-	a: '⠁',
-	b: '⠃',
-	c: '⠉',
-	d: '⠙',
-	e: '⠑',
-	f: '⠋',
-	g: '⠛',
-	h: '⠓',
-	i: '⠊',
-	j: '⠚',
-	k: '⠅',
-	l: '⠇',
-	m: '⠍',
-	n: '⠝',
-	o: '⠕',
-	p: '⠏',
-	q: '⠟',
-	r: '⠗',
-	s: '⠎',
-	t: '⠞',
-	u: '⠥',
-	v: '⠧',
-	w: '⠺',
-	x: '⠭',
-	y: '⠽',
-	z: '⠵',
-	A: '⠁',
-	B: '⠃',
-	C: '⠉',
-	D: '⠙',
-	E: '⠑',
-	F: '⠋',
-	G: '⠛',
-	H: '⠓',
-	I: '⠊',
-	J: '⠚',
-	K: '⠅',
-	L: '⠇',
-	M: '⠍',
-	N: '⠝',
-	O: '⠕',
-	P: '⠏',
-	Q: '⠟',
-	R: '⠗',
-	S: '⠎',
-	T: '⠞',
-	U: '⠥',
-	V: '⠧',
-	W: '⠺',
-	X: '⠭',
-	Y: '⠽',
-	Z: '⠵',
-	'[': '⠪',
-	'\\': '⠳',
-	']': '⠻',
-	'^': '⠘',
-	_: '⠸'
-};
-
-// Create reverse mapping from Braille to ASCII
-// Process in a way that prefers lowercase letters when both upper/lower map to same braille
-const reverseMapping = {};
-Object.entries(mapping).forEach(([key, value]) => {
-	// Only set if not already mapped, or if this is lowercase (prefer lowercase)
-	if (!reverseMapping[value] || /[a-z]/.test(key)) {
-		reverseMapping[value] = key;
-	}
-});
+// Use Abraham's UnicodeBraille conversion for ASCII to Unicode braille
+const UnicodeBraille = Abraham.UnicodeBraille;
 
 /**
  * Converts from ASCII characters to Braille Unicode characters.
+ * Uses Abraham's built-in UnicodeBraille.coerceToSixDotCells function
+ * Processes line by line to preserve newlines
  * @param {*} input_str 
  * @returns Braille Unicode string
  */
 export function ascii2Braille(input_str) {
-	let out = '';
-	for (const input_char of input_str) {
-		out += mapping[input_char] || '';
+	try {
+		// Process line by line to preserve newlines
+		const lines = input_str.split('\n');
+		const results = lines.map(line => UnicodeBraille.coerceToSixDotCells(line));
+		return results.join('\n');
+	} catch (error) {
+		console.warn('UnicodeBraille.coerceToSixDotCells failed:', error);
+		return input_str; // Return original if conversion fails
 	}
-	return out;
 }
 
 /**
  * Converts from Braille Unicode characters to ASCII characters.
+ * Uses Abraham's built-in UnicodeBraille.toBrailleAscii function
  * @param {*} input_str 
  * @returns ASCII string
  */
 export function braille2Ascii(input_str) {
-	let out = '';
-	for (const input_char of input_str) {
-		const mapped = reverseMapping[input_char];
-		if (mapped !== undefined) {
-			out += mapped;
-		} else if (input_char.match(/[\u2800-\u28FF]/)) {
-			// Unmapped braille character - log and skip
-			console.warn('Unmapped braille character:', input_char, 'U+' + input_char.charCodeAt(0).toString(16).toUpperCase());
-		} else {
-			// Not braille, keep as-is (space, newline, etc.)
-			out += input_char;
-		}
+	try {
+		return UnicodeBraille.toBrailleAscii(input_str);
+	} catch (error) {
+		console.warn('UnicodeBraille.toBrailleAscii failed:', error);
+		return input_str; // Return original if conversion fails
 	}
-	return out;
 }
 
 
 
 export function nemeth_to_latex(text) {
 	// convert the data to Braille
-	text = text.trim();
-	if (!text) return '';
+	// Don't trim the entire text - we need to preserve spaces within content
+	// Only check if completely empty
+	if (!text || text.trim() === '') return '';
 	
-	console.info("converting math" + text);
-	let latex = '';
-	let braille = '';
+	// Process line by line through Abraham, preserving blank lines and spaces
+	const lines = text.split('\n');
+	const results = [];
 	
-	try {
-		braille = ascii2Braille(text);
-	} catch (error) {
-		console.error("Ascii2Braille failed: " + text);
-		console.error(error);
-		return text; // Fallback to original text
-	}
-
-	try {
-		const result = Abraham.nemethToLatex(braille);
-		latex = result.value || '';
+	for (const line of lines) {
+		// Don't trim individual lines - preserve spaces within the braille content
+		if (line === '' || line.trim() === '') {
+			results.push('');
+			continue;
+		}
 		
-	} catch (error) {
-		console.error("Braille2latex failed for braille: " + braille);
-		console.error("Original text: " + text);
-		console.error(error);
-		// Fallback: try to do basic substitution
-		latex = text.replace(/\.k/g, '=').replace(/_/g, ' ');
+		let latex = '';
+		let braille = '';
+		
+		try {
+			braille = ascii2Braille(line);
+		} catch (error) {
+			console.error("Ascii2Braille failed: " + line);
+			console.error(error);
+			results.push(line);
+			continue;
+		}
+
+		try {
+			const result = Abraham.nemethToLatex(braille);
+			latex = result.value || '';
+			
+		} catch (error) {
+			console.error("Braille2latex failed for braille: " + braille);
+			console.error("Original text: " + line);
+			console.error(error);
+		}
+		
+		console.log(latex);
+		results.push(latex);
 	}
 	
-	console.log(latex);
-	return latex;
+	return results.join('\n');
 }

@@ -110,12 +110,12 @@ class Element {
 				break;
 			case tokens.NEMETH:
 				// Handle multi-line Nemeth blocks as display math
-				const nemethLines = (this.value || '').split('\n').filter(line => line.trim());
+		                const nemethLines = (this.value || '').split('\n');
 				if (nemethLines.length > 1) {
 					// Multi-line: use display math
 					this.add_latex('$$');
 					nemethLines.forEach((line, idx) => {
-						const latex = nemeth_to_latex(line.trim());
+						const latex = nemeth_to_latex(line);
 						if (latex) {
 							if (idx > 0) this.add_latex('\\\\\n');
 							this.add_latex(latex);
@@ -128,11 +128,11 @@ class Element {
 				}
 				break; // inline math from Nemeth
 			case tokens.EQUATION:
-				this.add_latex('$');
+				// EQUATION contains a single NEMETH child that will add its own $ delimiters
 				for (const child of this.children) {
 					this.add_latex(await child.to_latex(table));
 				}
-				this.add_latex('$\n\n');
+				this.add_latex('\n\n');
 				break;
 			case tokens.BOLD:
 				this.add_latex('\\textbf{');
@@ -151,12 +151,12 @@ class Element {
 			case tokens.STRING:
 				if (this.value) {
 					let asciiString = '';
-					const stringValue = this.get_value();
-					console.log('[processFile] STRING token ASCII value:', JSON.stringify(stringValue), 'table:', table);
+					const stringValue = this.get_value(); 
+					console.log('[processFile] STRING token ASCII value:', JSON.stringify(stringValue), 'length:', stringValue.length, 'table:', table);
 					
 					// Convert ASCII braille to Unicode braille first
 					const unicodeBraille = ascii2Braille(stringValue);
-					console.log('[processFile] Converted to Unicode braille:', JSON.stringify(unicodeBraille));
+					console.log('[processFile] Converted to Unicode braille:', JSON.stringify(unicodeBraille), 'length:', unicodeBraille.length);
 					
 					// Validate that the conversion was successful
 					if (!unicodeBraille || unicodeBraille.length === 0) {
@@ -168,26 +168,32 @@ class Element {
 					try {
 						await new Promise((resolve, reject) => {
 							const timeoutId = setTimeout(() => {
-								reject(new Error('backTranslateString timeout after 5 seconds'));
-							}, 5000);
+								reject(new Error('backTranslateString timeout after 1 seconds'));
+							}, 1000);
 							
 							asyncLiblouis.backTranslateString(
 								table,
 								unicodeBraille,
 								e => {
 									clearTimeout(timeoutId);
-									console.log('[processFile] backTranslateString result:', JSON.stringify(e));
-									asciiString = e;
-									resolve();
+									if (e === null || e === undefined) {
+										console.error('[processFile] backTranslateString returned:', e);
+										reject(new Error('backTranslateString returned null or undefined'));
+									} else {
+										console.log('[processFile] backTranslateString result:', JSON.stringify(e));
+										asciiString = e;
+										resolve();
+									}
 								}
 							);
 						});
 						this.add_latex(asciiString); // plain text back-translated from braille
 					} catch (error) {
-						console.error('[processFile] Error in backTranslateString:', error);
+						console.error('[processFile] Error in backTranslateString:', error.message);
 						console.error('[processFile] Input was:', JSON.stringify(stringValue));
 						console.error('[processFile] Unicode braille was:', JSON.stringify(unicodeBraille));
-						this.add_latex(stringValue); // Fallback to original ASCII string
+						// Fallback to original ASCII string
+						this.add_latex(stringValue);
 					}
 				}
 				break;
@@ -210,8 +216,7 @@ function lex(text) {
 	if (typeof text !== 'string') throw new Error('Input must be a string');
 
 	text = text.replace(/(\r\n|\n|\r)/g, '\n');
-	text = text.split('\n').map(line => line.trim()).join('\n');
-
+	
 	const parseTree = new Element(tokens.ROOT);
 
 	const paragraphs = text.split('\n\n');
@@ -221,44 +226,10 @@ function lex(text) {
 
 		const lines = para.split('\n');
 		lines.forEach((line, lineIndex) => {
-			const words = line.split(' ').filter(Boolean);
-			words.forEach((word, wordIndex) => {
-				if (!word) return;
-
-				if (word.length === 1) {
-					switch (currentToken.token) {
-						case tokens.NEMETH:
-						case tokens.BOLD:
-						case tokens.ITALIC:
-							currentToken.add_character(word);
-							return;
-						default:
-							const stringToken = currentToken.push(tokens.STRING);
-							stringToken.add_character(word);
-							stringToken.add_character(' ');
-							return;
-					}
-				}
-
-				let needsStringToken = false;
-				if (currentToken.token === tokens.PARA) {
-					const firsttwo = word.substring(0, 2);
-					if (
-						firsttwo !== tokenStrings.NEMETHSTART &&
-						firsttwo !== tokenStrings.NEMETHSTOP &&
-						firsttwo !== tokenStrings.BOLD &&
-						firsttwo !== tokenStrings.ITALIC
-					) {
-						needsStringToken = true;
-						// Only create a new STRING token if we're not already in one
-						if (currentToken.token !== tokens.STRING) {
-							currentToken = currentToken.push(tokens.STRING);
-						}
-					}
-				}
-
-				for (let i = 0; i < word.length; i++) {
-					const firsttwo = word.substring(i, i + 2);
+			// For NEMETH content, don't split by spaces - preserve them
+			if (currentToken.token === tokens.NEMETH) {
+				for (let i = 0; i < line.length; i++) {
+					const firsttwo = line.substring(i, i + 2);
 					switch (firsttwo) {
 						case tokenStrings.NEMETHSTART:
 							currentToken = currentToken.push(tokens.NEMETH);
@@ -279,30 +250,94 @@ function lex(text) {
 							i++;
 							continue;
 						default:
-							currentToken.add_character(word[i]);
+							currentToken.add_character(line[i]);
 					}
 				}
+			} else {
+				// For non-NEMETH content, use word-based processing
+				const words = line.split(' ').filter(Boolean);
+				words.forEach((word, wordIndex) => {
+					if (!word) return;
 
-				if (needsStringToken && currentToken.token === tokens.STRING) {
-					if (currentToken.get_value().endsWith(' ')) {
-						currentToken.value = currentToken.value.slice(0, -1);
+					if (word.length === 1) {
+						switch (currentToken.token) {
+							case tokens.NEMETH:
+							case tokens.BOLD:
+							case tokens.ITALIC:
+								currentToken.add_character(word);
+								return;
+							default:
+								const stringToken = currentToken.push(tokens.STRING);
+								stringToken.add_character(word);
+								stringToken.add_character(' ');
+								return;
+						}
 					}
-					// Don't close the STRING token yet - keep it open for consecutive words
-					// currentToken = currentToken.parent;
-				}
 
-				if (
-					currentToken.token === tokens.STRING ||
-					currentToken.token === tokens.NEMETH ||
-					currentToken.token === tokens.BOLD ||
-					currentToken.token === tokens.ITALIC
-				) {
-					currentToken.add_character(' ');
-				}
-			});
+					let needsStringToken = false;
+					if (currentToken.token === tokens.PARA) {
+						const firsttwo = word.substring(0, 2);
+						if (
+							firsttwo !== tokenStrings.NEMETHSTART &&
+							firsttwo !== tokenStrings.NEMETHSTOP &&
+							firsttwo !== tokenStrings.BOLD &&
+							firsttwo !== tokenStrings.ITALIC
+						) {
+							needsStringToken = true;
+							// Only create a new STRING token if we're not already in one
+							if (currentToken.token !== tokens.STRING) {
+								currentToken = currentToken.push(tokens.STRING);
+							}
+						}
+					}
 
-			if (currentToken.get_value && currentToken.get_value().endsWith(' ')) {
-				currentToken.value = currentToken.value.slice(0, -1);
+					for (let i = 0; i < word.length; i++) {
+						const firsttwo = word.substring(i, i + 2);
+						switch (firsttwo) {
+							case tokenStrings.NEMETHSTART:
+								currentToken = currentToken.push(tokens.NEMETH);
+								i++;
+								continue;
+							case tokenStrings.NEMETHSTOP:
+								if (currentToken.token === tokens.NEMETH) currentToken = currentToken.parent;
+								i++;
+								continue;
+							case tokenStrings.BOLD:
+								if (currentToken.token === tokens.BOLD) currentToken = currentToken.parent;
+								else currentToken = currentToken.push(tokens.BOLD);
+								i++;
+								continue;
+							case tokenStrings.ITALIC:
+								if (currentToken.token === tokens.ITALIC) currentToken = currentToken.parent;
+								else currentToken = currentToken.push(tokens.ITALIC);
+								i++;
+								continue;
+							default:
+								currentToken.add_character(word[i]);
+						}
+					}
+
+					if (needsStringToken && currentToken.token === tokens.STRING) {
+						if (currentToken.get_value().endsWith(' ')) {
+							currentToken.value = currentToken.value.slice(0, -1);
+						}
+						// Don't close the STRING token yet - keep it open for consecutive words
+						// currentToken = currentToken.parent;
+					}
+
+					if (
+						currentToken.token === tokens.STRING ||
+						currentToken.token === tokens.NEMETH ||
+						currentToken.token === tokens.BOLD ||
+						currentToken.token === tokens.ITALIC
+					) {
+						currentToken.add_character(' ');
+					}
+				});
+
+				if (currentToken.get_value && currentToken.get_value().endsWith(' ')) {
+					currentToken.value = currentToken.value.slice(0, -1);
+				}
 			}
 			
 			// Add newline after each line within NEMETH blocks (but not after last line)
