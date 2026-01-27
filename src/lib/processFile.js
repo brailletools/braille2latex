@@ -2,15 +2,43 @@ import { nemeth_to_latex, ascii2Braille } from './brailleMap';
 import liblouis from 'liblouis/easy-api';
 import { base } from '$app/paths';
 
-// Includes tables: unicode.dis, en-ueb-g2.ctb, en-ueb-g1.ctb, en-ueb-chardefs.uti, latinLetterDef8Dots.uti, en-ueb-math.ctb, braille-patterns.cti
-const capi_url = base + 'liblouis/build-tables-embeded-root-utf16.js';
+// Use liblouis 3.2.0-rc with tables loaded on demand from static/liblouis/tables
+const capi_url = base + 'liblouis/build-no-tables-utf16.js';
 const easyapi_url = base + 'liblouis/easy-api.js';
+const tables_url = base + 'liblouis/tables/';
 
 const asyncLiblouis = new liblouis.EasyApiAsync({
 	capi: capi_url,
 	easyapi: easyapi_url
 });
 asyncLiblouis.setLogLevel(0);
+
+function enableOnDemandTables() {
+	return new Promise((resolve, reject) => {
+		const timeoutId = setTimeout(() => reject(new Error('enableOnDemandTableLoading timed out')), 10000);
+		asyncLiblouis.enableOnDemandTableLoading(tables_url, () => {
+			clearTimeout(timeoutId);
+			resolve();
+		});
+	});
+}
+
+function initializeLiblouis() {
+	const versionReady = new Promise((resolve, reject) => {
+		const timeoutId = setTimeout(() => reject(new Error('version() timed out')), 10000);
+		asyncLiblouis.version(() => {
+			clearTimeout(timeoutId);
+			resolve();
+		});
+	});
+
+	return Promise.all([enableOnDemandTables(), versionReady]);
+}
+
+const liblouisReadyPromise = initializeLiblouis().catch(error => {
+	console.error('[liblouis] Initialization failed', error);
+	throw error;
+});
 
 // Default liblouis table for back-translation if caller does not override
 const defaultTable = 'en-ueb-g2.ctb';
@@ -99,12 +127,28 @@ class Element {
 		switch (this.token) {
 			case tokens.ROOT:
 				for (const child of this.children) {
-					this.add_latex(await child.to_latex(table));
+					try {
+						this.add_latex(await child.to_latex(table));
+					} catch (error) {
+						console.error('[processFile] Error processing ROOT child:', error.message, 'token:', child.token);
+						// Continue processing remaining children
+					}
 				}
 				break;
 			case tokens.PARA:
 				for (const child of this.children) {
-					this.add_latex(await child.to_latex(table));
+					try {
+						const childLatex = await child.to_latex(table);
+						const startsWithDisplayMath = /^\s*\$\$/.test(childLatex);
+						if (startsWithDisplayMath && this.latex.length > 0 && !this.latex.endsWith('\n\n')) {
+							// Ensure display math starts on its own line when it follows text
+							this.add_latex('\n\n');
+						}
+						this.add_latex(childLatex);
+					} catch (error) {
+						console.error('[processFile] Error processing PARA child:', error.message, 'token:', child.token);
+						// Continue processing remaining children
+					}
 				}
 				this.add_latex('\n\n');
 				break;
@@ -130,33 +174,45 @@ class Element {
 			case tokens.EQUATION:
 				// EQUATION contains a single NEMETH child that will add its own $ delimiters
 				for (const child of this.children) {
-					this.add_latex(await child.to_latex(table));
+					try {
+						this.add_latex(await child.to_latex(table));
+					} catch (error) {
+						console.error('[processFile] Error processing EQUATION child:', error.message, 'token:', child.token);
+						// Continue processing remaining children
+					}
 				}
 				this.add_latex('\n\n');
 				break;
 			case tokens.BOLD:
 				this.add_latex('\\textbf{');
 				for (const child of this.children) {
-					this.add_latex(await child.to_latex(table));
+					try {
+						this.add_latex(await child.to_latex(table));
+					} catch (error) {
+						console.error('[processFile] Error processing BOLD child:', error.message, 'token:', child.token);
+						// Continue processing remaining children
+					}
 				}
 				this.add_latex('}');
 				break;
 			case tokens.ITALIC:
 				this.add_latex('\\textit{');
 				for (const child of this.children) {
-					this.add_latex(await child.to_latex(table));
+					try {
+						this.add_latex(await child.to_latex(table));
+					} catch (error) {
+						console.error('[processFile] Error processing ITALIC child:', error.message, 'token:', child.token);
+						// Continue processing remaining children
+					}
 				}
 				this.add_latex('}');
 				break;
 			case tokens.STRING:
 				if (this.value) {
-					let asciiString = '';
 					const stringValue = this.get_value(); 
-					console.log('[processFile] STRING token ASCII value:', JSON.stringify(stringValue), 'length:', stringValue.length, 'table:', table);
 					
 					// Convert ASCII braille to Unicode braille first
 					const unicodeBraille = ascii2Braille(stringValue);
-					console.log('[processFile] Converted to Unicode braille:', JSON.stringify(unicodeBraille), 'length:', unicodeBraille.length);
 					
 					// Validate that the conversion was successful
 					if (!unicodeBraille || unicodeBraille.length === 0) {
@@ -165,36 +221,37 @@ class Element {
 						break;
 					}
 					
+					let translationResult = stringValue; // default fallback
 					try {
-						await new Promise((resolve, reject) => {
+						const result = await new Promise((resolve, reject) => {
 							const timeoutId = setTimeout(() => {
-								reject(new Error('backTranslateString timeout after 1 seconds'));
-							}, 1000);
+								reject(new Error('backTranslateString timeout after .5 seconds'));
+							}, 500);
 							
-							asyncLiblouis.backTranslateString(
-								table,
-								unicodeBraille,
-								e => {
-									clearTimeout(timeoutId);
-									if (e === null || e === undefined) {
-										console.error('[processFile] backTranslateString returned:', e);
+							try {
+								asyncLiblouis.backTranslateString(
+									table,
+									unicodeBraille,
+									e => {
+										clearTimeout(timeoutId);
+										if (e === null || e === undefined) {
 										reject(new Error('backTranslateString returned null or undefined'));
 									} else {
-										console.log('[processFile] backTranslateString result:', JSON.stringify(e));
-										asciiString = e;
-										resolve();
+											resolve(e);
+										}
 									}
-								}
-							);
+								);
+							} catch (syncError) {
+								clearTimeout(timeoutId);
+								reject(syncError);
+							}
 						});
-						this.add_latex(asciiString); // plain text back-translated from braille
+						translationResult = result;
 					} catch (error) {
-						console.error('[processFile] Error in backTranslateString:', error.message);
-						console.error('[processFile] Input was:', JSON.stringify(stringValue));
-						console.error('[processFile] Unicode braille was:', JSON.stringify(unicodeBraille));
-						// Fallback to original ASCII string
-						this.add_latex(stringValue);
+						console.warn('[processFile] Back-translation failed, using fallback:', error.message);
+						// translationResult already set to stringValue above
 					}
+					this.add_latex(translationResult);
 				}
 				break;
 			default:
@@ -208,7 +265,9 @@ export async function parse(text, table = defaultTable) {
 	if (typeof text !== 'string') {
 		throw new Error('Input must be a string');
 	}
-	const parseTree = lex(text);
+
+	await liblouisReadyPromise;
+        const parseTree = lex(text);
 	return await parseTree.to_latex(table);
 }
 
@@ -295,11 +354,11 @@ function lex(text) {
 						const firsttwo = word.substring(i, i + 2);
 						switch (firsttwo) {
 							case tokenStrings.NEMETHSTART:
+							// Close STRING token if we're in one
+							if (currentToken.token === tokens.STRING) {
+								currentToken = currentToken.parent;
+							}
 								currentToken = currentToken.push(tokens.NEMETH);
-								i++;
-								continue;
-							case tokenStrings.NEMETHSTOP:
-								if (currentToken.token === tokens.NEMETH) currentToken = currentToken.parent;
 								i++;
 								continue;
 							case tokenStrings.BOLD:
