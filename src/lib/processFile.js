@@ -152,25 +152,27 @@ class Element {
 				}
 				this.add_latex('\n\n');
 				break;
-			case tokens.NEMETH:
+			case tokens.NEMETH: {
 				// Handle multi-line Nemeth blocks as display math
-		                const nemethLines = (this.value || '').split('\n');
+		        const nemethLines = (this.value || '').split('\n');
 				if (nemethLines.length > 1) {
-					// Multi-line: use display math
-					this.add_latex('$$');
-					nemethLines.forEach((line, idx) => {
+					// Multi-line: wrap each line individually in display math
+					// Ensure display math starts on its own line when following text
+					if (this.latex.length > 0 && !this.latex.endsWith('\n\n')) {
+						this.add_latex('\n');
+					}
+					nemethLines.forEach((line) => {
 						const latex = nemeth_to_latex(line);
-						if (latex) {
-							if (idx > 0) this.add_latex('\\\\\n');
-							this.add_latex(latex);
+						if (latex && latex.trim() !== '') {
+							this.add_latex('$$' + latex + '$$\n');
 						}
 					});
-					this.add_latex('$$');
 				} else {
 					// Single line: inline math
 					this.add_latex('$' + nemeth_to_latex(this.value || '') + '$');
 				}
 				break; // inline math from Nemeth
+			}
 			case tokens.EQUATION:
 				// EQUATION contains a single NEMETH child that will add its own $ delimiters
 				for (const child of this.children) {
