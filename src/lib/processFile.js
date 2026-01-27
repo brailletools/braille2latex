@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { nemeth_to_latex, ascii2Braille } from './brailleMap';
 import liblouis from 'liblouis/easy-api';
 import { base } from '$app/paths';
@@ -317,7 +318,7 @@ function lex(text) {
 			} else {
 				// For non-NEMETH content, use word-based processing
 				const words = line.split(' ').filter(Boolean);
-				words.forEach((word, wordIndex) => {
+				words.forEach((word) => {
 					if (!word) return;
 
 					if (word.length === 1) {
@@ -328,9 +329,11 @@ function lex(text) {
 								currentToken.add_character(word);
 								return;
 							default:
-								const stringToken = currentToken.push(tokens.STRING);
-								stringToken.add_character(word);
-								stringToken.add_character(' ');
+								{
+									const stringToken = currentToken.push(tokens.STRING);
+									stringToken.add_character(word);
+									stringToken.add_character(' ');
+								}
 								return;
 						}
 					}

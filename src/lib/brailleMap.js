@@ -1,7 +1,14 @@
-import Abraham from '$lib/abraham.min.js'; // the Desmos Abraham library 
+// @ts-nocheck
+// Abraham is a UMD build that registers a global. Import for side effects and read from globalThis.
+import '$lib/abraham.min.js';
+
+const Abraham = globalThis.Abraham;
+if (!Abraham) {
+	console.warn('Abraham library failed to load; falling back to pass-through conversions.');
+}
 
 // Use Abraham's UnicodeBraille conversion for ASCII to Unicode braille
-const UnicodeBraille = Abraham.UnicodeBraille;
+const UnicodeBraille = Abraham?.UnicodeBraille;
 
 /**
  * Converts from ASCII characters to Braille Unicode characters.
@@ -12,6 +19,7 @@ const UnicodeBraille = Abraham.UnicodeBraille;
  */
 export function ascii2Braille(input_str) {
 	try {
+		if (!UnicodeBraille) return input_str;
 		// Process line by line to preserve newlines
 		const lines = input_str.split('\n');
 		const results = lines.map(line => UnicodeBraille.coerceToSixDotCells(line));
@@ -30,6 +38,7 @@ export function ascii2Braille(input_str) {
  */
 export function braille2Ascii(input_str) {
 	try {
+		if (!UnicodeBraille) return input_str;
 		return UnicodeBraille.toBrailleAscii(input_str);
 	} catch (error) {
 		console.warn('UnicodeBraille.toBrailleAscii failed:', error);

@@ -73,3 +73,20 @@ export function isCompleteLatexDocument(text) {
     const hasEnd = /\\end\{document\}/.test(text);
     return hasDocClass && hasBegin && hasEnd;
 }
+
+/**
+ * Triggers a browser download for an arbitrary Blob.
+ * @param {Blob} blob
+ * @param {string} filename
+ */
+export function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
