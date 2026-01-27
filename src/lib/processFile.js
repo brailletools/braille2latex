@@ -158,18 +158,37 @@ class Element {
 					const unicodeBraille = ascii2Braille(stringValue);
 					console.log('[processFile] Converted to Unicode braille:', JSON.stringify(unicodeBraille));
 					
-					await new Promise(resolve => {
-						asyncLiblouis.backTranslateString(
-							table,
-							unicodeBraille,
-							e => {
-								console.log('[processFile] backTranslateString result:', JSON.stringify(e));
-								asciiString = e;
-								resolve();
-							}
-						);
-					});
-					this.add_latex(asciiString); // plain text back-translated from braille
+					// Validate that the conversion was successful
+					if (!unicodeBraille || unicodeBraille.length === 0) {
+						console.warn('[processFile] Warning: ascii2Braille returned empty string for:', JSON.stringify(stringValue));
+						this.add_latex(stringValue); // Fallback to original ASCII string
+						break;
+					}
+					
+					try {
+						await new Promise((resolve, reject) => {
+							const timeoutId = setTimeout(() => {
+								reject(new Error('backTranslateString timeout after 5 seconds'));
+							}, 5000);
+							
+							asyncLiblouis.backTranslateString(
+								table,
+								unicodeBraille,
+								e => {
+									clearTimeout(timeoutId);
+									console.log('[processFile] backTranslateString result:', JSON.stringify(e));
+									asciiString = e;
+									resolve();
+								}
+							);
+						});
+						this.add_latex(asciiString); // plain text back-translated from braille
+					} catch (error) {
+						console.error('[processFile] Error in backTranslateString:', error);
+						console.error('[processFile] Input was:', JSON.stringify(stringValue));
+						console.error('[processFile] Unicode braille was:', JSON.stringify(unicodeBraille));
+						this.add_latex(stringValue); // Fallback to original ASCII string
+					}
 				}
 				break;
 			default:
