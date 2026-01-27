@@ -151,11 +151,19 @@ class Element {
 			case tokens.STRING:
 				if (this.value) {
 					let asciiString = '';
+					const stringValue = this.get_value();
+					console.log('[processFile] STRING token ASCII value:', JSON.stringify(stringValue), 'table:', table);
+					
+					// Convert ASCII braille to Unicode braille first
+					const unicodeBraille = ascii2Braille(stringValue);
+					console.log('[processFile] Converted to Unicode braille:', JSON.stringify(unicodeBraille));
+					
 					await new Promise(resolve => {
 						asyncLiblouis.backTranslateString(
 							table,
-							this.get_value(),
+							unicodeBraille,
 							e => {
+								console.log('[processFile] backTranslateString result:', JSON.stringify(e));
 								asciiString = e;
 								resolve();
 							}
