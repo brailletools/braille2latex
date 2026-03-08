@@ -224,8 +224,12 @@ IMPL.lou = {
 		var strlen_ptr = this.capi._malloc(4);
 
 		// Both values must be in widechars, not bytes.
+		// For UTF-32 builds, each astral character (surrogate pair in JS) is a single
+		// 32-bit widechar, so use the Unicode code-point count rather than the UTF-16
+		// code-unit count (inbuf.length) to avoid over-reading the input buffer.
+		var inLen = charSize === 4 ? Array.from(inbuf).length : inbuf.length;
 		this.capi.setValue(bufflen_ptr, outCapacity, "i32");
-		this.capi.setValue(strlen_ptr, inbuf.length, "i32");
+		this.capi.setValue(strlen_ptr, inLen, "i32");
 
 		var success = this.capi.ccall(backtranslate ?
 				'lou_backTranslateString' :
