@@ -79,15 +79,32 @@ export function nemeth_to_latex(text) {
 
 		try {
 			const result = Abraham.nemethToLatex(braille);
-			latex = result.value || '';
+			console.log("[nemeth_to_latex] Abraham.nemethToLatex result:", result);
+			
+			// Check the Abraham API result structure
+			if (result && typeof result === 'object') {
+				if (result.isError) {
+					console.error("[nemeth_to_latex] Abraham returned an error:", result.error);
+					latex = '';
+				} else if (result.value !== undefined && result.value !== null) {
+					latex = result.value;
+				} else {
+					console.warn("[nemeth_to_latex] Unexpected result structure - no value property");
+					latex = '';
+				}
+			} else {
+				console.warn("[nemeth_to_latex] Unexpected result type (not an object):", typeof result);
+				latex = '';
+			}
 			
 		} catch (error) {
 			console.error("Braille2latex failed for braille: " + braille);
 			console.error("Original text: " + line);
 			console.error(error);
+			latex = '';
 		}
 		
-		console.log(latex);
+		console.log("[nemeth_to_latex] Final latex for line:", latex);
 		results.push(latex);
 	}
 	
