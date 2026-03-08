@@ -207,14 +207,23 @@ IMPL.lou = {
 		var mode = 0;
 
 		var inbuff_ptr = this.mem.transfer(this.capi, inbuf);
-		var bufflen = this.mem.getBufferLength(inbuf);
-		var outbuff_ptr = this.capi._malloc(bufflen);
+		var inbufflen = this.mem.getBufferLength(inbuf);
+
+		// charSize is bytes per widechar: 2 for UTF-16 builds, 4 for UTF-32 builds.
+		var charSize = inbufflen / (inbuf.length + 1);
+
+		// Back-translation can produce text significantly longer than the braille
+		// input, so allocate an output buffer that is 4× the input length to avoid
+		// overflowing the buffer and corrupting the WASM heap.
+		var outCapacity = (inbuf.length + 1) * 4; // output capacity in widechars
+		var outbuff_ptr = this.capi._malloc(outCapacity * charSize);
 
 		var bufflen_ptr = this.capi._malloc(4);
 		var strlen_ptr = this.capi._malloc(4);
 
-		this.capi.setValue(bufflen_ptr, bufflen, "i32");
-		this.capi.setValue(strlen_ptr, bufflen, "i32");
+		// Both values must be in widechars, not bytes.
+		this.capi.setValue(bufflen_ptr, outCapacity, "i32");
+		this.capi.setValue(strlen_ptr, inbuf.length, "i32");
 
 		var success = this.capi.ccall(backtranslate ?
 				'lou_backTranslateString' :
@@ -225,6 +234,10 @@ IMPL.lou = {
 				null, mode]);
 
 		if(!success) {
+			this.capi._free(outbuff_ptr);
+			this.capi._free(inbuff_ptr);
+			this.capi._free(bufflen_ptr);
+			this.capi._free(strlen_ptr);
 			return null;
 		}
 
