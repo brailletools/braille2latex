@@ -9,6 +9,7 @@
 	} from '$lib/helper.js';
 	import { parse } from '$lib/processFile.js';
 	import { ascii2Braille, braille2Ascii } from '$lib/brailleMap.js';
+	import { recognizeImageWithFormatting, isModelReady } from '$lib/brailleOCR.js';
 	import liblouis from 'liblouis/easy-api';
 
 	import { base } from '$app/paths';
@@ -31,6 +32,12 @@
 	let text = $state(sample);
 	let filename = $state('example_filename.tex');
 	let selectedTable = $state(brailleTables[0].value);
+
+	// Image upload and OCR state
+	let imageFile = $state(null);
+	let imagePreviewUrl = $state('');
+	let ocrProcessing = $state(false);
+	let ocrError = $state('');
 
 	// Keep braille text as state, but sync with text
 	let brailleText = $state(ascii2Braille(sample));
@@ -59,27 +66,35 @@
 		return /[^\u2800-\u28FF\s\n]/.test(str);
 	}
 	
-	// Convert any remaining ASCII letters to braille in a mixed string
+	// Convert any remaining ASCII characters to braille in a mixed string
 	function sanitizeToAllBraille(str) {
 		let result = '';
 		for (const char of str) {
-			if (/[a-z]/i.test(char)) {
-				// It's a letter - convert to braille
-				result += ascii2Braille(char);
-			} else {
-				// Keep as-is (braille, space, newline, etc.)
+			// Check if it's already a braille character, space, or newline
+			if (/[\u2800-\u28FF\s]/.test(char)) {
+				// Keep braille, spaces, and newlines as-is
 				result += char;
+			} else {
+				// Try to convert any other ASCII character to braille
+				const brailleChar = ascii2Braille(char);
+				// Use the converted version if different, otherwise keep original
+				result += brailleChar !== char ? brailleChar : char;
 			}
 		}
 		return result;
 	}
 	
-	// Intercept and convert ASCII letters before they enter the textarea
+	// Intercept and convert ASCII characters before they enter the textarea
 	function handleBeforeInput(event) {
-		if (event.data && /[a-z]/i.test(event.data)) {
-			// It's a letter - convert it to braille
-			const brailleChar = ascii2Braille(event.data);
-			console.log('Converting letter before input:', event.data, '=>', brailleChar);
+		if (!event.data) return;
+		
+		// Attempt to convert any printable ASCII character to braille
+		// This includes letters, numbers, punctuation, etc.
+		const brailleChar = ascii2Braille(event.data);
+		
+		// Only intercept if conversion produces a different result (indicating it was successfully converted)
+		if (brailleChar !== event.data) {
+			console.log('Converting character before input:', event.data, '=>', brailleChar);
 			event.preventDefault();
 			
 			// Insert the braille character at the cursor position
@@ -132,6 +147,87 @@
 			text = inputValue;
 			lastBrailleText = inputValue;
 		}
+	}
+
+	// Unified file upload handler - detects file type and routes accordingly
+	function handleUnifiedFileUpload(event) {
+		const file = event.target?.files?.[0];
+		if (!file) return;
+
+		// Check if it's an image file
+		if (file.type.startsWith('image/')) {
+			// Handle as image for OCR
+			imageFile = file;
+			ocrError = '';
+
+			// Create preview
+			const reader = new FileReader();
+			reader.onload = () => {
+				imagePreviewUrl = reader.result;
+				console.log('[OCR] Image loaded for preview');
+			};
+			reader.readAsDataURL(file);
+		} else {
+			// Handle as text file (BRF/BRL)
+			handleFileChange(event, (result, fname) => {
+				text = result;
+				brailleText = ascii2Braille(result);
+				lastBrailleText = ascii2Braille(result);
+				filename = fname.split('.').slice(0, -1).join('.') + '.tex';
+				// Clear image preview if there was one
+				clearImage();
+			});
+		}
+	}
+
+	// Process image with OCR
+	async function processImageOCR() {
+		if (!imageFile) {
+			ocrError = 'No image selected';
+			return;
+		}
+
+		ocrProcessing = true;
+		ocrError = '';
+		console.log('[OCR] Starting OCR processing...');
+
+		try {
+			// Check if model is ready, if not, use a placeholder message
+			if (!isModelReady()) {
+				console.warn('[OCR] Model not ready yet. Using demo/fallback mode.');
+				ocrError = 'Note: OCR model is loading. Check console for details.';
+				// For now, show placeholder message
+				setTimeout(() => {
+					ocrError = 'OCR model requires TensorFlow.js setup. See console for model loading status.';
+				}, 1000);
+			}
+
+			// Call OCR service
+			const recognizedText = await recognizeImageWithFormatting(imageFile);
+			
+			if (recognizedText && recognizedText.length > 0) {
+				// Feed recognized text into the braille input
+				brailleText = recognizedText;
+				text = braille2Ascii(recognizedText);
+				lastBrailleText = recognizedText;
+				console.log('[OCR] Recognition complete. Found', recognizedText.length, 'characters');
+				ocrError = '';
+			} else {
+				ocrError = 'No text recognized in image. Try a higher resolution scan or clearer image.';
+			}
+		} catch (error) {
+			console.error('[OCR] Processing error:', error);
+			ocrError = `OCR Error: ${error.message}`;
+		} finally {
+			ocrProcessing = false;
+		}
+	}
+
+	// Clear image preview
+	function clearImage() {
+		imageFile = null;
+		imagePreviewUrl = '';
+		ocrError = '';
 	}
 
 	let latex = $derived.by(async () => {
@@ -327,18 +423,11 @@
 				<label
 					id="braille-file-label"
 					for="braille-file"
-					class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Upload file</label
+					class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Upload Braille file or image</label
 				>
 				<input
-					accept={authorizedExtensions.join(',')}
-					onchange={(event) => {
-						handleFileChange(event, (result, fname) => {
-							text = result;
-							brailleText = ascii2Braille(result);
-														lastBrailleText = ascii2Braille(result);
-							filename = fname.split('.').slice(0, -1).join('.') + '.tex';
-						});
-					}}
+					accept=".brf,.brl,image/*"
+					onchange={handleUnifiedFileUpload}
 					id="braille-file"
 					name="braille-file"
 					type="file"
@@ -346,13 +435,46 @@
 					class="block w-96 text-sm bg-gray-50 dark:bg-gray-950 dark:text-gray-100 file:cursor-pointer cursor-pointer rounded-lg border border-gray-300 dark:border-gray-700 file:py-2 file:px-4 file:mr-4 file:bg-gray-800 dark:file:bg-gray-600 file:hover:bg-gray-700 file:text-white font-light file:font-normal"
 				/>
 				<p class="mt-1 text-sm text-gray-500 dark:text-gray-300" id="file_input_help">
-					BRF or BRL. See syntax requirements <a
+					Text files (BRF/BRL) or images (JPEG/PNG). For images: best at 300 dpi, landscape, Braille slate scan. See syntax requirements <a
 						href="https://github.com/make4all/braille2latex"
 						class="font-medium text-blue-600 underline dark:text-blue-500 hover:no-underline"
 						>here</a
 					>
 				</p>
+
+				{#if imagePreviewUrl}
+					<div class="mt-3 p-3 bg-gray-800 rounded-lg">
+						<div class="mb-2">
+							<img
+								src={imagePreviewUrl}
+								alt="Braille preview"
+								class="max-w-full max-h-48 rounded border border-gray-600"
+							/>
+						</div>
+						<div class="flex gap-2">
+							<button
+								onclick={processImageOCR}
+								disabled={ocrProcessing}
+								class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded text-sm"
+							>
+								{ocrProcessing ? 'Processing...' : 'Recognize Text'}
+							</button>
+							<button
+								onclick={clearImage}
+								class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-100 rounded text-sm"
+							>
+								Clear
+							</button>
+						</div>
+						{#if ocrError}
+							<div class="mt-2 p-2 bg-red-900 text-red-200 rounded text-sm">
+								{ocrError}
+							</div>
+						{/if}
+					</div>
+				{/if}
 			</div>
+
 			<div class="pb-4 px-4">
 				<label for="braille-table" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Braille table</label>
 				<select
@@ -360,7 +482,7 @@
 					bind:value={selectedTable}
 					class="block w-96 text-sm bg-gray-50 dark:bg-gray-950 dark:text-gray-100 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2"
 				>
-					{#each brailleTables as table}
+					{#each brailleTables as table (table.value)}
 						<option value={table.value}>{table.label}</option>
 					{/each}
 				</select>
