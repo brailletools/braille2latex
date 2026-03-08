@@ -14,11 +14,11 @@
 	import { base } from '$app/paths';
 
 	// Use liblouis 3.2.0-rc with tables loaded on demand from static/liblouis/tables
-	// Remove leading slash to prevent double slash when liblouis constructs full URLs
-	const normalizedBase = base === '/' ? '' : base;
-	const capi_url = (normalizedBase + '/liblouis/build-no-tables-utf16.js').replace(/^\//, '');
-	const easyapi_url = (normalizedBase + '/liblouis/easy-api.js').replace(/^\//, '');
-	const tables_url = (normalizedBase + '/liblouis/tables/').replace(/^\//, '');
+	// Normalize base to avoid trailing slash, but keep URLs root-relative for workers/importScripts
+	const normalizedBase = base === '/' ? '' : base.replace(/\/+$/, '');
+	const capi_url = normalizedBase + '/liblouis/build-no-tables-utf16.js';
+	const easyapi_url = normalizedBase + '/liblouis/easy-api.js';
+	const tables_url = normalizedBase + '/liblouis/tables/';
 	console.log(liblouis);
 
 	console.log(capi_url);
