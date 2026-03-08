@@ -5,7 +5,9 @@
 		handleFileChange,
 		downloadText,
 		wrapLatexDocument,
-		isCompleteLatexDocument
+		isCompleteLatexDocument,
+		compileToPDF,
+		openInOverleaf
 	} from '$lib/helper.js';
 	import { parse } from '$lib/processFile.js';
 	import { ascii2Braille, braille2Ascii } from '$lib/brailleMap.js';
@@ -35,11 +37,11 @@
 	// Keep braille text as state, but sync with text
 	let brailleText = $state(ascii2Braille(sample));
 	let lastBrailleText = ascii2Braille(sample);
-	
+
 	// Track if the Worker is ready
 	let liblouisReady = $state(false);
 	let parseReady = $state(false);
-	
+
 	// Display value: always show braille, converting ASCII to braille if needed
 	let displayBrailleText = $derived.by(() => {
 		if (containsAscii(brailleText) && !containsBraille(brailleText)) {
@@ -48,17 +50,17 @@
 		}
 		return brailleText;
 	});
-	
+
 	// Check if a string contains braille characters (Unicode 0x2800-0x28FF range)
 	function containsBraille(str) {
 		return /[\u2800-\u28FF]/.test(str);
 	}
-	
+
 	// Check if a string contains ASCII text (not just braille or whitespace)
 	function containsAscii(str) {
 		return /[^\u2800-\u28FF\s\n]/.test(str);
 	}
-	
+
 	// Convert any remaining ASCII letters to braille in a mixed string
 	function sanitizeToAllBraille(str) {
 		let result = '';
@@ -73,7 +75,7 @@
 		}
 		return result;
 	}
-	
+
 	// Intercept and convert ASCII letters before they enter the textarea
 	function handleBeforeInput(event) {
 		if (event.data && /[a-z]/i.test(event.data)) {
@@ -81,37 +83,37 @@
 			const brailleChar = ascii2Braille(event.data);
 			console.log('Converting letter before input:', event.data, '=>', brailleChar);
 			event.preventDefault();
-			
+
 			// Insert the braille character at the cursor position
 			const textarea = event.target;
 			const start = textarea.selectionStart;
 			const end = textarea.selectionEnd;
 			const currentValue = textarea.value;
-			
+
 			const newValue = currentValue.substring(0, start) + brailleChar + currentValue.substring(end);
 			textarea.value = newValue;
 			brailleText = newValue;
 			text = braille2Ascii(newValue);
 			lastBrailleText = newValue;
-			
+
 			// Move cursor to after inserted character
 			textarea.setSelectionRange(start + brailleChar.length, start + brailleChar.length);
 		}
 	}
-	
+
 	// Update both text representations when user types or pastes
 	function handleBrailleInput(event) {
 		let inputValue = event.target.value;
-		
+
 		// Sanitize any stray ASCII letters to braille (for paste events)
 		inputValue = sanitizeToAllBraille(inputValue);
-		
+
 		// Determine if input contains ASCII or braille
 		const hasAscii = containsAscii(inputValue);
 		const hasBraille = containsBraille(inputValue);
-		
+
 		console.log('Input detected - ASCII:', hasAscii, 'Braille:', hasBraille);
-		
+
 		if (hasAscii && !hasBraille) {
 			// Pure ASCII input - convert to braille for display, keep ASCII for processing
 			const brailleConverted = ascii2Braille(inputValue);
@@ -140,11 +142,11 @@
 			console.log('[latex] Waiting for parser to be ready...');
 			return 'Initializing...';
 		}
-		
+
 		try {
 			console.log('[latex] Parsing with table:', selectedTable);
 			console.log('[latex] Input text length:', text.length);
-			
+
 			// Parse the braille input with the selected table
 			let evalstring = await parse(text, selectedTable);
 			console.log('[latex] Parse complete');
@@ -157,94 +159,135 @@
 			return errorMsg;
 		}
 	});
-	
+
 	// Convert ASCII braille notation to Unicode braille
 	function convertAsciBrailleToUnicode(asciBraille, table) {
 		return new Promise((resolve) => {
 			let attempt = 0;
 			const maxAttempts = 2;
-			
+
 			console.log('[convertAsciBrailleToUnicode] ========== START ==========');
 			console.log('[convertAsciBrailleToUnicode] Input length:', asciBraille.length);
 			console.log('[convertAsciBrailleToUnicode] Input (JSON):', JSON.stringify(asciBraille));
-			
+
 			const attemptTranslate = () => {
 				attempt++;
 				try {
-					console.log(`[convertAsciBrailleToUnicode] Attempt ${attempt}. Input:`, asciBraille.substring(0, 100));
-					
+					console.log(
+						`[convertAsciBrailleToUnicode] Attempt ${attempt}. Input:`,
+						asciBraille.substring(0, 100)
+					);
+
 					let resolved = false;
 					const callbackId = Math.random();
-					console.log(`[convertAsciBrailleToUnicode] Attempt ${attempt} registered callback ID: ${callbackId}`);
-					
+					console.log(
+						`[convertAsciBrailleToUnicode] Attempt ${attempt} registered callback ID: ${callbackId}`
+					);
+
 					const timeout = setTimeout(() => {
 						if (!resolved) {
-							console.warn(`[convertAsciBrailleToUnicode] Attempt ${attempt} TIMEOUT - callback ${callbackId} was never invoked after 5s`);
+							console.warn(
+								`[convertAsciBrailleToUnicode] Attempt ${attempt} TIMEOUT - callback ${callbackId} was never invoked after 5s`
+							);
 							resolved = true;
-							
+
 							// Retry once after a delay if we haven't hit max attempts
 							if (attempt < maxAttempts) {
-								console.log(`[convertAsciBrailleToUnicode] Retrying attempt ${attempt + 1} after 500ms delay...`);
+								console.log(
+									`[convertAsciBrailleToUnicode] Retrying attempt ${attempt + 1} after 500ms delay...`
+								);
 								setTimeout(attemptTranslate, 500);
 							} else {
-								console.warn(`[convertAsciBrailleToUnicode] Max attempts reached, falling back to original input`);
-								console.log('[convertAsciBrailleToUnicode] Fallback return (JSON):', JSON.stringify(asciBraille));
+								console.warn(
+									`[convertAsciBrailleToUnicode] Max attempts reached, falling back to original input`
+								);
+								console.log(
+									'[convertAsciBrailleToUnicode] Fallback return (JSON):',
+									JSON.stringify(asciBraille)
+								);
 								resolve(asciBraille);
 							}
 						}
 					}, 5000);
-					
+
 					// Wait for Worker to be ready if needed
 					const tryTranslate = () => {
 						if (!liblouisReady) {
-							console.log(`[convertAsciBrailleToUnicode] Attempt ${attempt} waiting for liblouisReady...`);
+							console.log(
+								`[convertAsciBrailleToUnicode] Attempt ${attempt} waiting for liblouisReady...`
+							);
 							setTimeout(tryTranslate, 100);
 							return;
 						}
-						
-						console.log(`[convertAsciBrailleToUnicode] Attempt ${attempt} liblouis is ready, calling translateString...`);
+
+						console.log(
+							`[convertAsciBrailleToUnicode] Attempt ${attempt} liblouis is ready, calling translateString...`
+						);
 						try {
 							// Ensure unicode.dis is included in table specification
 							const fullTable = table.includes('unicode.dis') ? table : `unicode.dis,${table}`;
-							console.log(`[convertAsciBrailleToUnicode] Attempt ${attempt} using table: ${fullTable}`);
-							
-							asyncLiblouis.translateString(
-								fullTable,
-								asciBraille,
-								function(result) {
-									console.log(`[convertAsciBrailleToUnicode] Attempt ${attempt} callback ${callbackId} INVOKED`);
-									console.log(`[convertAsciBrailleToUnicode] Attempt ${attempt} result type: ${typeof result}`);
-									console.log(`[convertAsciBrailleToUnicode] Attempt ${attempt} result is null/undefined: ${result == null}`);
-									if (result) {
-										console.log(`[convertAsciBrailleToUnicode] Attempt ${attempt} result length: ${result.length}`);
-										console.log(`[convertAsciBrailleToUnicode] Attempt ${attempt} result (JSON): ${JSON.stringify(result.substring(0, 100))}`);
-									}
-									if (!resolved) {
-										resolved = true;
-										clearTimeout(timeout);
-										if (result) {
-											console.log(`[convertAsciBrailleToUnicode] Attempt ${attempt} SUCCESS - resolving with result`);
-											console.log(`[convertAsciBrailleToUnicode] Full result (JSON): ${JSON.stringify(result)}`);
-											resolve(result);
-										} else {
-											console.warn(`[convertAsciBrailleToUnicode] Attempt ${attempt} no result returned, falling back`);
-											resolve(asciBraille);
-										}
-									} else {
-										console.warn(`[convertAsciBrailleToUnicode] Attempt ${attempt} callback arrived after resolution`);
-									}
-								}
+							console.log(
+								`[convertAsciBrailleToUnicode] Attempt ${attempt} using table: ${fullTable}`
 							);
-							console.log(`[convertAsciBrailleToUnicode] Attempt ${attempt} callback registered, waiting for response...`);
+
+							asyncLiblouis.translateString(fullTable, asciBraille, function (result) {
+								console.log(
+									`[convertAsciBrailleToUnicode] Attempt ${attempt} callback ${callbackId} INVOKED`
+								);
+								console.log(
+									`[convertAsciBrailleToUnicode] Attempt ${attempt} result type: ${typeof result}`
+								);
+								console.log(
+									`[convertAsciBrailleToUnicode] Attempt ${attempt} result is null/undefined: ${result == null}`
+								);
+								if (result) {
+									console.log(
+										`[convertAsciBrailleToUnicode] Attempt ${attempt} result length: ${result.length}`
+									);
+									console.log(
+										`[convertAsciBrailleToUnicode] Attempt ${attempt} result (JSON): ${JSON.stringify(result.substring(0, 100))}`
+									);
+								}
+								if (!resolved) {
+									resolved = true;
+									clearTimeout(timeout);
+									if (result) {
+										console.log(
+											`[convertAsciBrailleToUnicode] Attempt ${attempt} SUCCESS - resolving with result`
+										);
+										console.log(
+											`[convertAsciBrailleToUnicode] Full result (JSON): ${JSON.stringify(result)}`
+										);
+										resolve(result);
+									} else {
+										console.warn(
+											`[convertAsciBrailleToUnicode] Attempt ${attempt} no result returned, falling back`
+										);
+										resolve(asciBraille);
+									}
+								} else {
+									console.warn(
+										`[convertAsciBrailleToUnicode] Attempt ${attempt} callback arrived after resolution`
+									);
+								}
+							});
+							console.log(
+								`[convertAsciBrailleToUnicode] Attempt ${attempt} callback registered, waiting for response...`
+							);
 						} catch (innerError) {
 							if (!resolved) {
 								resolved = true;
 								clearTimeout(timeout);
-								console.warn(`[convertAsciBrailleToUnicode] Attempt ${attempt} EXCEPTION in translateString:`, innerError);
-								
+								console.warn(
+									`[convertAsciBrailleToUnicode] Attempt ${attempt} EXCEPTION in translateString:`,
+									innerError
+								);
+
 								// Retry once after a delay if we haven't hit max attempts
 								if (attempt < maxAttempts) {
-									console.log(`[convertAsciBrailleToUnicode] Retrying attempt ${attempt + 1} after 500ms...`);
+									console.log(
+										`[convertAsciBrailleToUnicode] Retrying attempt ${attempt + 1} after 500ms...`
+									);
 									setTimeout(attemptTranslate, 500);
 								} else {
 									console.warn(`[convertAsciBrailleToUnicode] Max attempts reached, falling back`);
@@ -253,7 +296,7 @@
 							}
 						}
 					};
-					
+
 					tryTranslate();
 				} catch (error) {
 					console.warn(`[convertAsciBrailleToUnicode] Attempt ${attempt} OUTER EXCEPTION:`, error);
@@ -264,17 +307,20 @@
 					}
 				}
 			};
-			
-			console.log(`[convertAsciBrailleToUnicode] Starting translation attempts for input length ${asciBraille.length}`);
+
+			console.log(
+				`[convertAsciBrailleToUnicode] Starting translation attempts for input length ${asciBraille.length}`
+			);
 			attemptTranslate();
 		});
 	}
-	
+
 	// Track the resolved LaTeX for download
 	let resolvedLatex = $state('');
 
-
-
+	// PDF compilation state
+	let pdfLoading = $state(false);
+	let pdfError = $state('');
 
 	const authorizedExtensions = ['.brf', '.brl'];
 
@@ -285,7 +331,10 @@
 
 	function enableOnDemandTables() {
 		return new Promise((resolve, reject) => {
-			const timeoutId = setTimeout(() => reject(new Error('enableOnDemandTableLoading timed out')), 10000);
+			const timeoutId = setTimeout(
+				() => reject(new Error('enableOnDemandTableLoading timed out')),
+				10000
+			);
 			asyncLiblouis.enableOnDemandTableLoading(tables_url, () => {
 				clearTimeout(timeoutId);
 				resolve();
@@ -310,7 +359,7 @@
 		});
 	}
 
-	initializeLiblouis().catch(error => {
+	initializeLiblouis().catch((error) => {
 		console.error('[liblouis] Initialization failed', error);
 	});
 </script>
@@ -335,7 +384,7 @@
 						handleFileChange(event, (result, fname) => {
 							text = result;
 							brailleText = ascii2Braille(result);
-														lastBrailleText = ascii2Braille(result);
+							lastBrailleText = ascii2Braille(result);
 							filename = fname.split('.').slice(0, -1).join('.') + '.tex';
 						});
 					}}
@@ -354,7 +403,10 @@
 				</p>
 			</div>
 			<div class="pb-4 px-4">
-				<label for="braille-table" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Braille table</label>
+				<label
+					for="braille-table"
+					class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Braille table</label
+				>
 				<select
 					id="braille-table"
 					bind:value={selectedTable}
@@ -364,7 +416,9 @@
 						<option value={table.value}>{table.label}</option>
 					{/each}
 				</select>
-				<p class="mt-1 text-sm text-gray-500 dark:text-gray-300">Used for back-translation during LaTeX conversion.</p>
+				<p class="mt-1 text-sm text-gray-500 dark:text-gray-300">
+					Used for back-translation during LaTeX conversion.
+				</p>
 			</div>
 			<div class="flex flex-col lg:flex-row">
 				<div class="p-4 flex-auto">
@@ -400,24 +454,83 @@
 			</div>
 			<div class="p-4">
 				<h3 class="text-3xl dark:text-gray-100">File Download</h3>
-				<label id="latex-download-label" for="latex-download" class="dark:text-gray-100"
-					>Download a Latex file:</label
-				>
+				<p class="mt-1 mb-3 text-sm text-gray-500 dark:text-gray-300">
+					Download the converted LaTeX or compile it to PDF.
+				</p>
+				<div class="flex flex-wrap gap-2">
+					<div>
+						<label id="latex-download-label" for="latex-download" class="sr-only"
+							>Download a LaTeX file</label
+						>
+						<button
+							id="latex-download"
+							name="latex-download"
+							class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 dark:bg-blue-800 dark:hover:bg-blue-900"
+							onclick={() => {
+								const complete = wrapLatexDocument(resolvedLatex);
+								if (!isCompleteLatexDocument(complete)) {
+									console.warn('[download] Wrapped LaTeX document may be incomplete');
+								}
+								downloadText(complete, filename);
+							}}
+						>
+							Download LaTeX (.tex)
+						</button>
+					</div>
 
-				<button
-					id="latex-download"
-					name="latex-download"
-					class="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 dark:bg-blue-800 dark:hover:bg-blue-900"
-					onclick={() => {
-						const complete = wrapLatexDocument(resolvedLatex);
-						if (!isCompleteLatexDocument(complete)) {
-							console.warn('[download] Wrapped LaTeX document may be incomplete');
-						}
-						downloadText(complete, filename);
-					}}
-				>
-					Download Input as File
-				</button>
+					<div>
+						<label id="pdf-download-label" for="pdf-download" class="sr-only"
+							>Compile and download a PDF</label
+						>
+						<button
+							id="pdf-download"
+							name="pdf-download"
+							disabled={pdfLoading}
+							aria-busy={pdfLoading}
+							class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 dark:bg-green-800 dark:hover:bg-green-900 disabled:opacity-50 disabled:cursor-not-allowed"
+							onclick={async () => {
+								pdfError = '';
+								pdfLoading = true;
+								try {
+									const complete = wrapLatexDocument(resolvedLatex);
+									await compileToPDF(complete, filename);
+								} catch (err) {
+									pdfError = err?.message ?? 'PDF compilation failed.';
+								} finally {
+									pdfLoading = false;
+								}
+							}}
+						>
+							{pdfLoading ? 'Compiling…' : 'Download PDF'}
+						</button>
+					</div>
+
+					<div>
+						<label id="overleaf-label" for="overleaf-open" class="sr-only">Open in Overleaf</label>
+						<button
+							id="overleaf-open"
+							name="overleaf-open"
+							class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"
+							onclick={() => {
+								const complete = wrapLatexDocument(resolvedLatex);
+								openInOverleaf(complete);
+							}}
+						>
+							Open in Overleaf
+						</button>
+					</div>
+				</div>
+
+				{#if pdfError}
+					<p class="mt-2 text-sm text-red-500" role="alert">
+						{pdfError} You can use
+						<button
+							class="underline text-blue-400 hover:text-blue-300"
+							onclick={() => openInOverleaf(wrapLatexDocument(resolvedLatex))}
+							>Open in Overleaf</button
+						> to compile your document online instead.
+					</p>
+				{/if}
 			</div>
 		</div>
 	</div>
