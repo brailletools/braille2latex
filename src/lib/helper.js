@@ -280,7 +280,38 @@ export async function compileToHTML(latexContent) {
 		// Open in a new tab
 		const blob = new Blob([fullHtml], { type: 'text/html' });
 		const url = URL.createObjectURL(blob);
-		window.open(url, '_blank');
+
+		// Attempt to open a new tab/window. This may be blocked by popup blockers.
+		const newWindow = window.open('', '_blank');
+
+		// Function to safely revoke the object URL
+		const revokeUrl = () => {
+			try {
+				URL.revokeObjectURL(url);
+			} catch (e) {
+				// Ignore errors during revoke
+			}
+		};
+
+		if (newWindow) {
+			// Navigate the newly opened window to the Blob URL
+			newWindow.location.href = url;
+
+			// Revoke the URL once the new page has loaded
+			const onLoad = () => {
+				revokeUrl();
+				newWindow.removeEventListener('load', onLoad);
+			};
+			newWindow.addEventListener('load', onLoad);
+
+			// Fallback: ensure revocation even if 'load' doesn't fire as expected
+			setTimeout(revokeUrl, 60000);
+		} else {
+			// Popup was blocked; fall back to navigating the current window
+			window.location.href = url;
+			// Revoke the URL after a delay to allow navigation to complete
+			setTimeout(revokeUrl, 60000);
+		}
 	} catch (err) {
 		console.error('HTML conversion error:', err);
 		throw new Error(`HTML conversion failed: ${err?.message ?? 'Unknown error'}`);
