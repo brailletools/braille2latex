@@ -144,14 +144,14 @@ export async function compileToPDF(latexContent, filename) {
 		// latex.js API: create generator, then parse with it
 		const generator = new window.latexjs.HtmlGenerator({ hyphenate: false });
 		const doc = window.latexjs.parse(browserLatex, { generator });
-		
+
 		// The parse returns a DOM node tree - we need to serialize it to HTML
 		// The generator has the htmlDocument property with the full document
 		const htmlDoc = generator.htmlDocument();
-		
+
 		// Carry over any styles/scripts that latex.js placed in the generated <head>
 		if (htmlDoc.head && document && document.head) {
-			Array.from(htmlDoc.head.children).forEach(node => {
+			Array.from(htmlDoc.head.children).forEach((node) => {
 				const tag = node.tagName && node.tagName.toLowerCase();
 				if (tag === 'style' || tag === 'link' || tag === 'script') {
 					// Import the node into the current document before appending
@@ -160,29 +160,29 @@ export async function compileToPDF(latexContent, filename) {
 				}
 			});
 		}
-		
+
 		// Get the body innerHTML, but remove any duplicate content or source code annotations
 		let html = htmlDoc.body.innerHTML;
-		
+
 		// latex.js generates both katex-mathml (accessibility) and katex-html (display)
 		// We want the MathML version for better accessibility
 		const container = document.createElement('div');
 		container.innerHTML = html;
-		
+
 		// Remove katex-html elements (we want the MathML version for accessibility)
 		const htmlElements = container.querySelectorAll('.katex-html');
-		htmlElements.forEach(el => el.remove());
-		
+		htmlElements.forEach((el) => el.remove());
+
 		// Also remove any pre elements that contain source code (they'll have the LaTeX source)
 		const preElements = container.querySelectorAll('pre');
-		preElements.forEach(pre => {
+		preElements.forEach((pre) => {
 			const text = pre.textContent || pre.innerText || '';
 			// If the pre contains LaTeX commands, it's probably the source code
 			if (text.includes('\\') || text.includes('documentclass')) {
 				pre.remove();
 			}
 		});
-		
+
 		html = container.innerHTML;
 		container.style.padding = '20px';
 		container.style.fontFamily = 'serif';
@@ -204,6 +204,33 @@ export async function compileToPDF(latexContent, filename) {
 		console.error('PDF compilation error:', err);
 		throw new Error(`LaTeX compilation failed: ${err?.message ?? 'Unknown error'}`);
 	}
+}
+
+/**
+ * Opens the LaTeX content in Overleaf for online editing and PDF compilation.
+ * Submits the content to Overleaf's "Open in Overleaf" API (POST https://www.overleaf.com/docs,
+ * field name "snip") via a hidden form, opening the result in a new browser tab.
+ * See: https://www.overleaf.com/learn/latex/Using_the_Overleaf_API
+ * @param {string} latexContent - Complete LaTeX document content
+ */
+export function openInOverleaf(latexContent) {
+	const form = document.createElement('form');
+	form.method = 'post';
+	// Overleaf "Open in Overleaf" API endpoint — accepts `snip` (inline content)
+	// or `snip_uri` (data-URI / URL). Using `snip` for direct content submission.
+	form.action = 'https://www.overleaf.com/docs';
+	form.target = '_blank';
+	form.style.display = 'none';
+
+	const input = document.createElement('input');
+	input.type = 'hidden';
+	input.name = 'snip';
+	input.value = latexContent;
+
+	form.appendChild(input);
+	document.body.appendChild(form);
+	form.submit();
+	document.body.removeChild(form);
 }
 
 /**
@@ -231,33 +258,33 @@ export async function compileToHTML(latexContent) {
 		// latex.js API: create generator, then parse with it
 		const generator = new window.latexjs.HtmlGenerator({ hyphenate: false });
 		const doc = window.latexjs.parse(browserLatex, { generator });
-		
+
 		// The parse returns a DOM node tree - we need to serialize it to HTML
 		// The generator has the htmlDocument property with the full document
 		const htmlDoc = generator.htmlDocument();
-		
+
 		// Get the body innerHTML, but remove any duplicate content or source code annotations
 		let html = htmlDoc.body.innerHTML;
-		
+
 		// latex.js generates both katex-mathml (accessibility) and katex-html (display)
 		// For HTML output, we want the MathML version for better accessibility
 		const htmlContainer = document.createElement('div');
 		htmlContainer.innerHTML = html;
-		
+
 		// Remove katex-html elements (we want the MathML version for accessibility)
 		const htmlElements = htmlContainer.querySelectorAll('.katex-html');
-		htmlElements.forEach(el => el.remove());
-		
+		htmlElements.forEach((el) => el.remove());
+
 		// Also remove any pre elements that contain source code (they'll have the LaTeX source)
 		const preElements = htmlContainer.querySelectorAll('pre');
-		preElements.forEach(pre => {
+		preElements.forEach((pre) => {
 			const text = pre.textContent || pre.innerText || '';
 			// If the pre contains LaTeX commands, it's probably the source code
 			if (text.includes('\\') || text.includes('documentclass')) {
 				pre.remove();
 			}
 		});
-		
+
 		html = htmlContainer.innerHTML;
 
 		// Wrap in a complete HTML document
