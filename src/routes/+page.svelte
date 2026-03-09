@@ -14,11 +14,10 @@
 
 	import { base } from '$app/paths';
 
-	// Use liblouis 3.2.0-rc with tables loaded on demand from static/liblouis/tables
+	// Use liblouis 3.2.0-rc with tables embedded (fixes production gzip issues)
  	const normalizedBase = base === '/' ? '' : base;
- 	const capi_url = `.${normalizedBase}/liblouis/build-no-tables-utf16.js`;
+ 	const capi_url = `.${normalizedBase}/liblouis/build-tables-embeded-root-utf16.js`;
  	const easyapi_url = `.${normalizedBase}/liblouis/easy-api.js`;
- 	const tables_url = `.${normalizedBase}/liblouis/tables/`;
 	console.log(liblouis);
 	console.log(capi_url);
 	console.log(easyapi_url);
@@ -328,19 +327,6 @@
 		easyapi: easyapi_url
 	});
 
-	function enableOnDemandTables() {
-		return new Promise((resolve, reject) => {
-			const timeoutId = setTimeout(
-				() => reject(new Error('enableOnDemandTableLoading timed out')),
-				10000
-			);
-			asyncLiblouis.enableOnDemandTableLoading(tables_url, () => {
-				clearTimeout(timeoutId);
-				resolve();
-			});
-		});
-	}
-
 	function initializeLiblouis() {
 		console.log('[init] Creating asyncLiblouis Worker...');
 		const versionReady = new Promise((resolve, reject) => {
@@ -351,7 +337,7 @@
 			});
 		});
 
-		return Promise.all([enableOnDemandTables(), versionReady]).then(() => {
+		return versionReady.then(() => {
 			liblouisReady = true;
 			parseReady = true;
 			console.log('[liblouis] Worker initialized and ready');
