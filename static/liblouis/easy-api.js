@@ -214,10 +214,10 @@ IMPL.lou = {
 
 		// Base output capacity in widechars.
 		var baseCapacity = inbuf.length + 1;
-		// Back-translation can produce text significantly longer than the braille
-		// input, so allocate an output buffer that is 4× the input length in that
-		// case to avoid overflowing the buffer and corrupting the WASM heap.
-		var outCapacity = backtranslate ? baseCapacity * 4 : baseCapacity;
+		// Back-translation can expand output substantially (especially with grade 2
+		// contractions and mode switches). A too-small buffer can corrupt the WASM
+		// heap before liblouis reports failure, so use a large conservative buffer.
+		var outCapacity = backtranslate ? Math.max(baseCapacity * 32, 2048) : baseCapacity;
 		var outbuff_ptr = this.capi._malloc(outCapacity * charSize);
 
 		var bufflen_ptr = this.capi._malloc(4);
