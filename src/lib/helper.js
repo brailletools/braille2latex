@@ -149,6 +149,18 @@ export async function compileToPDF(latexContent, filename) {
 		// The generator has the htmlDocument property with the full document
 		const htmlDoc = generator.htmlDocument();
 		
+		// Carry over any styles/scripts that latex.js placed in the generated <head>
+		if (htmlDoc.head && document && document.head) {
+			Array.from(htmlDoc.head.children).forEach(node => {
+				const tag = node.tagName && node.tagName.toLowerCase();
+				if (tag === 'style' || tag === 'link' || tag === 'script') {
+					// Import the node into the current document before appending
+					const imported = document.importNode(node, true);
+					document.head.appendChild(imported);
+				}
+			});
+		}
+		
 		// Get the body innerHTML, but remove any duplicate content or source code annotations
 		let html = htmlDoc.body.innerHTML;
 		
