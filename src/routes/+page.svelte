@@ -7,7 +7,8 @@
 		wrapLatexDocument,
 		isCompleteLatexDocument,
 		compileToPDF,
-		compileToHTML
+		compileToHTML,
+		openInOverleaf
 	} from '$lib/helper.js';
 	import { parse } from '$lib/processFile.js';
 	import { ascii2Braille, braille2Ascii } from '$lib/brailleMap.js';
@@ -534,11 +535,33 @@
 							{htmlLoading ? 'Converting…' : 'Open HTML'}
 						</button>
 					</div>
+
+					<div>
+						<label id="overleaf-label" for="overleaf-open" class="sr-only">Open in Overleaf</label>
+						<button
+							id="overleaf-open"
+							name="overleaf-open"
+							class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"
+							onclick={() => {
+								const complete = wrapLatexDocument(resolvedLatex);
+								openInOverleaf(complete);
+							}}
+						>
+							Open in Overleaf
+						</button>
+					</div>
 				</div>
 
 				{#if pdfError}
 					<p class="mt-2 text-sm text-red-500" role="alert">
-						{pdfError}
+						{pdfError} You can use
+						<button
+							type="button"
+							aria-label="Open document in Overleaf to compile online"
+							class="underline text-blue-400 hover:text-blue-300"
+							onclick={() => openInOverleaf(wrapLatexDocument(resolvedLatex))}
+							>Open in Overleaf</button
+						> to compile your document online instead.
 					</p>
 				{/if}
 
