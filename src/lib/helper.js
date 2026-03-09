@@ -164,14 +164,18 @@ export async function compileToPDF(latexContent, filename) {
 		// Get the body innerHTML, but remove any duplicate content or source code annotations
 		let html = htmlDoc.body.innerHTML;
 
-		// latex.js generates both katex-mathml (accessibility) and katex-html (display)
-		// We want the MathML version for better accessibility
+		// latex.js generates both .katex-html (visible rendering) and .katex-mathml
+		// (accessibility/screen-reader subtree). Keep .katex-html for display and hide
+		// .katex-mathml via CSS so it remains accessible but does not appear visually.
 		const container = document.createElement('div');
 		container.innerHTML = html;
 
-		// Remove katex-html elements (we want the MathML version for accessibility)
-		const htmlElements = container.querySelectorAll('.katex-html');
-		htmlElements.forEach((el) => el.remove());
+		// Inject a style rule to hide the MathML subtree while keeping it accessible
+		const mathmlStyle = document.createElement('style');
+		mathmlStyle.textContent =
+			'.katex-mathml { position: absolute; clip: rect(1px,1px,1px,1px); ' +
+			'padding: 0; border: 0; height: 1px; width: 1px; overflow: hidden; }';
+		container.prepend(mathmlStyle);
 
 		// Also remove any pre elements that contain source code (they'll have the LaTeX source)
 		const preElements = container.querySelectorAll('pre');
@@ -266,14 +270,11 @@ export async function compileToHTML(latexContent) {
 		// Get the body innerHTML, but remove any duplicate content or source code annotations
 		let html = htmlDoc.body.innerHTML;
 
-		// latex.js generates both katex-mathml (accessibility) and katex-html (display)
-		// For HTML output, we want the MathML version for better accessibility
+		// latex.js generates both .katex-html (visible rendering) and .katex-mathml
+		// (accessibility/screen-reader subtree). Keep .katex-html for display; the
+		// .katex-mathml subtree is hidden by the CSS rule added to the output document.
 		const htmlContainer = document.createElement('div');
 		htmlContainer.innerHTML = html;
-
-		// Remove katex-html elements (we want the MathML version for accessibility)
-		const htmlElements = htmlContainer.querySelectorAll('.katex-html');
-		htmlElements.forEach((el) => el.remove());
 
 		// Also remove any pre elements that contain source code (they'll have the LaTeX source)
 		const preElements = htmlContainer.querySelectorAll('pre');
@@ -309,6 +310,16 @@ export async function compileToHTML(latexContent) {
 		table { border-collapse: collapse; width: 100%; }
 		td, th { border: 1px solid #ddd; padding: 8px; text-align: left; }
 		th { background-color: #f5f5f5; }
+		/* Hide the MathML accessibility subtree visually while keeping it accessible */
+		.katex-mathml {
+			position: absolute;
+			clip: rect(1px, 1px, 1px, 1px);
+			padding: 0;
+			border: 0;
+			height: 1px;
+			width: 1px;
+			overflow: hidden;
+		}
 	</style>
 </head>
 <body>
