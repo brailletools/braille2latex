@@ -212,18 +212,24 @@ IMPL.lou = {
 		// charSize is bytes per widechar: 2 for UTF-16 builds, 4 for UTF-32 builds.
 		var charSize = inbufflen / (inbuf.length + 1);
 
+		// Base output capacity in widechars.
+		var baseCapacity = inbuf.length + 1;
 		// Back-translation can produce text significantly longer than the braille
-		// input, so allocate an output buffer that is 4× the input length to avoid
-		// overflowing the buffer and corrupting the WASM heap.
-		var outCapacity = (inbuf.length + 1) * 4; // output capacity in widechars
+		// input, so allocate an output buffer that is 4× the input length in that
+		// case to avoid overflowing the buffer and corrupting the WASM heap.
+		var outCapacity = backtranslate ? baseCapacity * 4 : baseCapacity;
 		var outbuff_ptr = this.capi._malloc(outCapacity * charSize);
 
 		var bufflen_ptr = this.capi._malloc(4);
 		var strlen_ptr = this.capi._malloc(4);
 
 		// Both values must be in widechars, not bytes.
+		// For UTF-32 builds, each astral character (surrogate pair in JS) is a single
+		// 32-bit widechar, so use the Unicode code-point count rather than the UTF-16
+		// code-unit count (inbuf.length) to avoid over-reading the input buffer.
+		var inLen = charSize === 4 ? Array.from(inbuf).length : inbuf.length;
 		this.capi.setValue(bufflen_ptr, outCapacity, "i32");
-		this.capi.setValue(strlen_ptr, inbuf.length, "i32");
+		this.capi.setValue(strlen_ptr, inLen, "i32");
 
 		var success = this.capi.ccall(backtranslate ?
 				'lou_backTranslateString' :
