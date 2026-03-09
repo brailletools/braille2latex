@@ -20,7 +20,6 @@
 	const easyapi_url = `.${normalizedBase}/liblouis/easy-api.js`;
 	const tables_url = `.${normalizedBase}/liblouis/tables/`;
 	console.log(liblouis);
-
 	console.log(capi_url);
 	console.log(easyapi_url);
 

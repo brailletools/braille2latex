@@ -133,33 +133,30 @@ export async function compileToHTML(latexContent) {
 		// latex.js API: create generator, then parse with it
 		const generator = new window.latexjs.HtmlGenerator({ hyphenate: false });
 		const doc = window.latexjs.parse(browserLatex, { generator });
-		
+
 		// The parse returns a DOM node tree - we need to serialize it to HTML
 		// The generator has the htmlDocument property with the full document
 		const htmlDoc = generator.htmlDocument();
-		
+
 		// Get the body innerHTML, but remove any duplicate content or source code annotations
 		let html = htmlDoc.body.innerHTML;
-		
-		// latex.js generates both katex-mathml (accessibility) and katex-html (display)
-		// For HTML output, we want the MathML version for better accessibility
+
+		// latex.js generates both .katex-html (visible rendering) and .katex-mathml
+		// (accessibility/screen-reader subtree). Keep .katex-html for display; the
+		// .katex-mathml subtree is hidden by the CSS rule added to the output document.
 		const htmlContainer = document.createElement('div');
 		htmlContainer.innerHTML = html;
-		
-		// Remove katex-html elements (we want the MathML version for accessibility)
-		const htmlElements = htmlContainer.querySelectorAll('.katex-html');
-		htmlElements.forEach(el => el.remove());
-		
+
 		// Also remove any pre elements that contain source code (they'll have the LaTeX source)
 		const preElements = htmlContainer.querySelectorAll('pre');
-		preElements.forEach(pre => {
+		preElements.forEach((pre) => {
 			const text = pre.textContent || pre.innerText || '';
 			// If the pre contains LaTeX commands, it's probably the source code
 			if (text.includes('\\') || text.includes('documentclass')) {
 				pre.remove();
 			}
 		});
-		
+
 		html = htmlContainer.innerHTML;
 
 		// Wrap in a complete HTML document
@@ -184,6 +181,16 @@ export async function compileToHTML(latexContent) {
 		table { border-collapse: collapse; width: 100%; }
 		td, th { border: 1px solid #ddd; padding: 8px; text-align: left; }
 		th { background-color: #f5f5f5; }
+		/* Hide the MathML accessibility subtree visually while keeping it accessible */
+		.katex-mathml {
+			position: absolute;
+			clip: rect(1px, 1px, 1px, 1px);
+			padding: 0;
+			border: 0;
+			height: 1px;
+			width: 1px;
+			overflow: hidden;
+		}
 	</style>
 </head>
 <body>
@@ -194,7 +201,38 @@ export async function compileToHTML(latexContent) {
 		// Open in a new tab
 		const blob = new Blob([fullHtml], { type: 'text/html' });
 		const url = URL.createObjectURL(blob);
-		window.open(url, '_blank');
+
+		// Attempt to open a new tab/window. This may be blocked by popup blockers.
+		const newWindow = window.open('', '_blank');
+
+		// Function to safely revoke the object URL
+		const revokeUrl = () => {
+			try {
+				URL.revokeObjectURL(url);
+			} catch (e) {
+				// Ignore errors during revoke
+			}
+		};
+
+		if (newWindow) {
+			// Navigate the newly opened window to the Blob URL
+			newWindow.location.href = url;
+
+			// Revoke the URL once the new page has loaded
+			const onLoad = () => {
+				revokeUrl();
+				newWindow.removeEventListener('load', onLoad);
+			};
+			newWindow.addEventListener('load', onLoad);
+
+			// Fallback: ensure revocation even if 'load' doesn't fire as expected
+			setTimeout(revokeUrl, 60000);
+		} else {
+			// Popup was blocked; fall back to navigating the current window
+			window.location.href = url;
+			// Revoke the URL after a delay to allow navigation to complete
+			setTimeout(revokeUrl, 60000);
+		}
 	} catch (err) {
 		console.error('HTML conversion error:', err);
 		throw new Error(`HTML conversion failed: ${err?.message ?? 'Unknown error'}`);
