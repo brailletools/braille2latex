@@ -4,6 +4,7 @@ import liblouis from 'liblouis/easy-api';
 import { base } from '$app/paths';
 
 // Use liblouis 3.2.0-rc with tables loaded on demand from static/liblouis/tables
+// Use root-relative URLs so blob workers can resolve them correctly via importScripts()
 const normalizedBase = base === '/' ? '' : base;
 const capi_url = `.${normalizedBase}/liblouis/build-no-tables-utf16.js`;
 const easyapi_url = `.${normalizedBase}/liblouis/easy-api.js`;
