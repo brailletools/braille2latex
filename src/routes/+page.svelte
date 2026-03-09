@@ -6,7 +6,6 @@
 		downloadText,
 		wrapLatexDocument,
 		isCompleteLatexDocument,
-		compileToPDF,
 		compileToHTML
 	} from '$lib/helper.js';
 	import { parse } from '$lib/processFile.js';
@@ -319,10 +318,6 @@
 	// Track the resolved LaTeX for download
 	let resolvedLatex = $state('');
 
-	// PDF compilation state
-	let pdfLoading = $state(false);
-	let pdfError = $state('');
-
 	// HTML conversion state
 	let htmlLoading = $state(false);
 	let htmlError = $state('');
@@ -484,33 +479,6 @@
 					</div>
 
 					<div>
-						<label id="pdf-download-label" for="pdf-download" class="sr-only"
-							>Compile and download a PDF</label
-						>
-						<button
-							id="pdf-download"
-							name="pdf-download"
-							disabled={pdfLoading}
-							aria-busy={pdfLoading}
-							class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 dark:bg-green-800 dark:hover:bg-green-900 disabled:opacity-50 disabled:cursor-not-allowed"
-							onclick={async () => {
-								pdfError = '';
-								pdfLoading = true;
-								try {
-									const complete = wrapLatexDocument(resolvedLatex);
-									await compileToPDF(complete, filename);
-								} catch (err) {
-									pdfError = err?.message ?? 'PDF compilation failed.';
-								} finally {
-									pdfLoading = false;
-								}
-							}}
-						>
-							{pdfLoading ? 'Compiling…' : 'Download PDF'}
-						</button>
-					</div>
-
-					<div>
 						<label id="html-download-label" for="html-download" class="sr-only"
 							>Convert to HTML</label
 						>
@@ -537,12 +505,6 @@
 						</button>
 					</div>
 				</div>
-
-				{#if pdfError}
-					<p class="mt-2 text-sm text-red-500" role="alert">
-						{pdfError}
-					</p>
-				{/if}
 
 				{#if htmlError}
 					<p class="mt-2 text-sm text-red-500" role="alert">
