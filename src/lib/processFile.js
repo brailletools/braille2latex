@@ -3,28 +3,17 @@ import { nemeth_to_latex, ascii2Braille } from './brailleMap';
 import liblouis from 'liblouis/easy-api';
 import { base } from '$app/paths';
 
-// Use liblouis 3.2.0-rc with tables loaded on demand from static/liblouis/tables
+// Use liblouis 3.2.0-rc with tables embedded (fixes production gzip issues)
 // Use root-relative URLs so blob workers can resolve them correctly via importScripts()
 const normalizedBase = base === '/' ? '' : base;
-const capi_url = `.${normalizedBase}/liblouis/build-no-tables-utf16.js`;
+const capi_url = `.${normalizedBase}/liblouis/build-tables-embeded-root-utf16.js`;
 const easyapi_url = `.${normalizedBase}/liblouis/easy-api.js`;
-const tables_url = `.${normalizedBase}/liblouis/tables/`;
 
 const asyncLiblouis = new liblouis.EasyApiAsync({
 	capi: capi_url,
 	easyapi: easyapi_url
 });
 asyncLiblouis.setLogLevel(0);
-
-function enableOnDemandTables() {
-	return new Promise((resolve, reject) => {
-		const timeoutId = setTimeout(() => reject(new Error('enableOnDemandTableLoading timed out')), 10000);
-		asyncLiblouis.enableOnDemandTableLoading(tables_url, () => {
-			clearTimeout(timeoutId);
-			resolve();
-		});
-	});
-}
 
 function initializeLiblouis() {
 	const versionReady = new Promise((resolve, reject) => {
@@ -35,7 +24,7 @@ function initializeLiblouis() {
 		});
 	});
 
-	return Promise.all([enableOnDemandTables(), versionReady]);
+	return versionReady;
 }
 
 const liblouisReadyPromise = initializeLiblouis().catch(error => {
