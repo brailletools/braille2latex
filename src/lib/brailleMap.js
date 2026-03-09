@@ -79,8 +79,6 @@ export function nemeth_to_latex(text) {
 
 		try {
 			const result = Abraham.nemethToLatex(braille);
-			console.log("[nemeth_to_latex] Abraham.nemethToLatex result:", result);
-			
 			// Check the Abraham API result structure
 			if (result && typeof result === 'object') {
 				if (result.isError) {
@@ -104,7 +102,6 @@ export function nemeth_to_latex(text) {
 			latex = '';
 		}
 		
-		console.log("[nemeth_to_latex] Final latex for line:", latex);
 		results.push(latex);
 	}
 	
