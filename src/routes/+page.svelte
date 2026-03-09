@@ -15,10 +15,10 @@
 	import { base } from '$app/paths';
 
 	// Use liblouis 3.2.0-rc with tables loaded on demand from static/liblouis/tables
-	const normalizedBase = base === '/' ? '' : base;
-	const capi_url = `.${normalizedBase}/liblouis/build-no-tables-utf16.js`;
-	const easyapi_url = `.${normalizedBase}/liblouis/easy-api.js`;
-	const tables_url = `.${normalizedBase}/liblouis/tables/`;
+ 	const normalizedBase = base === '/' ? '' : base;
+ 	const capi_url = `.${normalizedBase}/liblouis/build-no-tables-utf16.js`;
+ 	const easyapi_url = `.${normalizedBase}/liblouis/easy-api.js`;
+ 	const tables_url = `.${normalizedBase}/liblouis/tables/`;
 	console.log(liblouis);
 	console.log(capi_url);
 	console.log(easyapi_url);

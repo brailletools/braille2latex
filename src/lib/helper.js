@@ -141,11 +141,24 @@ export async function compileToHTML(latexContent) {
 		// Get the body innerHTML, but remove any duplicate content or source code annotations
 		let html = htmlDoc.body.innerHTML;
 
-		// latex.js generates both .katex-html (visible rendering) and .katex-mathml
-		// (accessibility/screen-reader subtree). Keep .katex-html for display; the
-		// .katex-mathml subtree is hidden by the CSS rule added to the output document.
+		// latex.js/KaTeX emits both visual HTML and MathML. Replace each KaTeX block
+		// with only its MathML subtree so exported HTML is MathML-only.
 		const htmlContainer = document.createElement('div');
 		htmlContainer.innerHTML = html;
+
+		const katexNodes = htmlContainer.querySelectorAll('.katex');
+		katexNodes.forEach((katexNode) => {
+			const mathmlNode = katexNode.querySelector('.katex-mathml');
+			if (!mathmlNode) {
+				return;
+			}
+
+			const fragment = document.createDocumentFragment();
+			Array.from(mathmlNode.childNodes).forEach((child) => {
+				fragment.appendChild(child.cloneNode(true));
+			});
+			katexNode.replaceWith(fragment);
+		});
 
 		// Also remove any pre elements that contain source code (they'll have the LaTeX source)
 		const preElements = htmlContainer.querySelectorAll('pre');
@@ -181,16 +194,6 @@ export async function compileToHTML(latexContent) {
 		table { border-collapse: collapse; width: 100%; }
 		td, th { border: 1px solid #ddd; padding: 8px; text-align: left; }
 		th { background-color: #f5f5f5; }
-		/* Hide the MathML accessibility subtree visually while keeping it accessible */
-		.katex-mathml {
-			position: absolute;
-			clip: rect(1px, 1px, 1px, 1px);
-			padding: 0;
-			border: 0;
-			height: 1px;
-			width: 1px;
-			overflow: hidden;
-		}
 	</style>
 </head>
 <body>
