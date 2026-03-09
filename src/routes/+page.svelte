@@ -7,7 +7,7 @@
 		wrapLatexDocument,
 		isCompleteLatexDocument,
 		compileToPDF,
-		openInOverleaf
+		compileToHTML
 	} from '$lib/helper.js';
 	import { parse } from '$lib/processFile.js';
 	import { ascii2Braille, braille2Ascii } from '$lib/brailleMap.js';
@@ -16,9 +16,10 @@
 	import { base } from '$app/paths';
 
 	// Use liblouis 3.2.0-rc with tables loaded on demand from static/liblouis/tables
-	const capi_url = base + '/liblouis/build-no-tables-utf16.js';
-	const easyapi_url = base + '/liblouis/easy-api.js';
-	const tables_url = base + '/liblouis/tables/';
+	const normalizedBase = base === '/' ? '' : base;
+	const capi_url = `.${normalizedBase}/liblouis/build-no-tables-utf16.js`;
+	const easyapi_url = `.${normalizedBase}/liblouis/easy-api.js`;
+	const tables_url = `.${normalizedBase}/liblouis/tables/`;
 	console.log(liblouis);
 
 	console.log(capi_url);
@@ -322,6 +323,10 @@
 	let pdfLoading = $state(false);
 	let pdfError = $state('');
 
+	// HTML conversion state
+	let htmlLoading = $state(false);
+	let htmlError = $state('');
+
 	const authorizedExtensions = ['.brf', '.brl'];
 
 	const asyncLiblouis = new liblouis.EasyApiAsync({
@@ -506,29 +511,42 @@
 					</div>
 
 					<div>
-						<label id="overleaf-label" for="overleaf-open" class="sr-only">Open in Overleaf</label>
+						<label id="html-download-label" for="html-download" class="sr-only"
+							>Convert to HTML</label
+						>
 						<button
-							id="overleaf-open"
-							name="overleaf-open"
-							class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600"
-							onclick={() => {
-								const complete = wrapLatexDocument(resolvedLatex);
-								openInOverleaf(complete);
+							id="html-download"
+							name="html-download"
+							disabled={htmlLoading}
+							aria-busy={htmlLoading}
+							class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 dark:bg-purple-800 dark:hover:bg-purple-900 disabled:opacity-50 disabled:cursor-not-allowed"
+							onclick={async () => {
+								htmlError = '';
+								htmlLoading = true;
+								try {
+									const complete = wrapLatexDocument(resolvedLatex);
+									await compileToHTML(complete);
+								} catch (err) {
+									htmlError = err?.message ?? 'HTML conversion failed.';
+								} finally {
+									htmlLoading = false;
+								}
 							}}
 						>
-							Open in Overleaf
+							{htmlLoading ? 'Converting…' : 'Open HTML'}
 						</button>
 					</div>
 				</div>
 
 				{#if pdfError}
 					<p class="mt-2 text-sm text-red-500" role="alert">
-						{pdfError} You can use
-						<button
-							class="underline text-blue-400 hover:text-blue-300"
-							onclick={() => openInOverleaf(wrapLatexDocument(resolvedLatex))}
-							>Open in Overleaf</button
-						> to compile your document online instead.
+						{pdfError}
+					</p>
+				{/if}
+
+				{#if htmlError}
+					<p class="mt-2 text-sm text-red-500" role="alert">
+						{htmlError}
 					</p>
 				{/if}
 			</div>

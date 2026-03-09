@@ -44,5 +44,9 @@
 		"ignoredBuiltDependencies": [
 			"@tailwindcss/oxide"
 		]
+	},
+	"dependencies": {
+		"html2pdf.js": "^0.14.0",
+		"latex.js": "^0.12.6"
 	}
 }
