@@ -46,5 +46,8 @@
 		"ignoredBuiltDependencies": [
 			"@tailwindcss/oxide"
 		]
+	},
+	"dependencies": {
+		"latex.js": "^0.12.6"
 	}
 }
