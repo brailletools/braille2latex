@@ -13,5 +13,13 @@
     "type": "git",
     "url": "https://github.com/brailletools/braille2latex"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+    "lint": "eslint src sample.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^16.0.0"
+  }
 }
