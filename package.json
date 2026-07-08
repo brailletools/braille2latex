@@ -1,0 +1,17 @@
+{
+  "name": "@brailletools/braille2latex",
+  "version": "0.1.0",
+  "description": "Braille to LaTeX converter supporting Nemeth math notation",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "liblouis": "^0.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brailletools/braille2latex"
+  },
+  "license": "MIT"
+}

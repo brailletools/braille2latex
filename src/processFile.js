@@ -1,36 +1,40 @@
 // @ts-nocheck
-import { nemeth_to_latex, ascii2Braille } from './brailleMap';
+import { nemeth_to_latex, ascii2Braille } from './brailleMap.js';
 import liblouis from 'liblouis/easy-api';
-import { base } from '$app/paths';
 
-// Use liblouis 3.2.0-rc with tables embedded (fixes production gzip issues)
-// Use root-relative URLs so blob workers can resolve them correctly via importScripts()
-const normalizedBase = base === '/' ? '' : base;
-const capi_url = `.${normalizedBase}/liblouis/build-tables-embeded-root-utf16.js`;
-const easyapi_url = `.${normalizedBase}/liblouis/easy-api.js`;
+let asyncLiblouis = null;
+let liblouisReadyPromise = null;
 
-const asyncLiblouis = new liblouis.EasyApiAsync({
-	capi: capi_url,
-	easyapi: easyapi_url
-});
-asyncLiblouis.setLogLevel(0);
-
-function initializeLiblouis() {
-	const versionReady = new Promise((resolve, reject) => {
-		const timeoutId = setTimeout(() => reject(new Error('version() timed out')), 10000);
-		asyncLiblouis.version(() => {
-			clearTimeout(timeoutId);
-			resolve();
-		});
+/**
+ * Configure the liblouis backend. Must be called before parse().
+ *
+ * @param {object} options
+ * @param {string} options.liblouisCapiUrl   - URL to build-tables-embeded-root-utf16.js
+ * @param {string} options.liblouisEasyApiUrl - URL to easy-api.js
+ *
+ * Example (SvelteKit):
+ *   import { base } from '$app/paths';
+ *   import { configure } from '@brailletools/braille2latex';
+ *   const b = base === '/' ? '' : base;
+ *   configure({
+ *     liblouisCapiUrl:    `.${b}/liblouis/build-tables-embeded-root-utf16.js`,
+ *     liblouisEasyApiUrl: `.${b}/liblouis/easy-api.js`,
+ *   });
+ */
+export function configure({ liblouisCapiUrl, liblouisEasyApiUrl }) {
+	asyncLiblouis = new liblouis.EasyApiAsync({
+		capi:    liblouisCapiUrl,
+		easyapi: liblouisEasyApiUrl,
 	});
-
-	return versionReady;
+	asyncLiblouis.setLogLevel(0);
+	liblouisReadyPromise = new Promise((resolve, reject) => {
+		const timeoutId = setTimeout(() => reject(new Error('liblouis version() timed out')), 10000);
+		asyncLiblouis.version(() => { clearTimeout(timeoutId); resolve(); });
+	}).catch(error => {
+		console.error('[liblouis] Initialization failed', error);
+		throw error;
+	});
 }
-
-const liblouisReadyPromise = initializeLiblouis().catch(error => {
-	console.error('[liblouis] Initialization failed', error);
-	throw error;
-});
 
 // Default liblouis table for back-translation if caller does not override
 const defaultTable = 'en-ueb-g2.ctb';
@@ -256,9 +260,8 @@ class Element {
 }
 
 export async function parse(text, table = defaultTable) {
-	if (typeof text !== 'string') {
-		throw new Error('Input must be a string');
-	}
+	if (typeof text !== 'string') throw new Error('Input must be a string');
+	if (!liblouisReadyPromise) throw new Error('Call configure() before parse()');
 
 	await liblouisReadyPromise;
         const parseTree = lex(text);

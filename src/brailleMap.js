@@ -1,6 +1,6 @@
 // @ts-nocheck
 // Abraham is a UMD build that registers a global. Import for side effects and read from globalThis.
-import '$lib/abraham.min.js';
+import './abraham.min.js';
 
 const Abraham = globalThis.Abraham;
 if (!Abraham) {
