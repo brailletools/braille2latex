@@ -1,51 +1,65 @@
-# Braille2Latex
+# @brailletools/braille2latex
 
-This is a website that lets you type in braille or upload a braille file, and download it as latex, PDF, or HTML. It supports math in NEMETH format. You can try it at 
-https://make4all.github.io/braille2latex/
+JavaScript library for converting Braille Readiness Format (BRF) files to LaTeX.
+Supports Nemeth math notation and UEB text via [liblouis](https://github.com/liblouis/liblouis.js).
 
-## Dependencies & Credits
-
-This project uses the following open-source libraries:
-
-### [Abraham](https://www.desmos.com/api/v1.11/docs/abraham.html) (Desmos)
-Handles Nemeth to LaTeX conversion for mathematical notation.
-- **License**: Proprietary (Desmos API)
-- **Usage**: Converts ASCII Braille math (Nemeth) to LaTeX format
-
-### [liblouis](https://github.com/liblouis/liblouis)
-Provides Braille translation tables and conversion logic for various languages and Braille grades.
-- **License**: LGPL v2.1+
-- **Usage**: Translates between Braille and text, supports Grade 1, Grade 2, and UEB
-
-### [latex.js](https://github.com/michael-brade/LaTeX.js)
-A JavaScript LaTeX parser that generates HTML from LaTeX source code, enabling client-side rendering.
-- **License**: MIT
-- **Usage**: Converts LaTeX to HTML for preview and display, and intermediate format for PDF generation
-
-### [html2pdf.js](https://github.com/eKoopmans/html2pdf.js)
-Converts HTML content to PDF in the browser using jsPDF and html2canvas.
-- **License**: MIT
-- **Usage**: Generates PDF files from HTML without requiring server-side processing
-
-### [liblouis (JavaScript binding)](https://github.com/liblouis/liblouis.js)
-JavaScript bindings for liblouis, compiled to WebAssembly for browser compatibility.
-- **License**: LGPL v2.1+
-- **Usage**: Enables real-time Braille translation in the web interface
-
-## Developing
+## Install
 
 ```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+npm install @brailletools/braille2latex liblouis
 ```
 
-## Building
+## API
 
-To create a production version of your app:
+### `configure({ liblouisCapiUrl, liblouisEasyApiUrl })`
+
+Must be called once before `parse()`. Provides the URLs (browser) or file paths (Node.js)
+to the liblouis WebAssembly build.
+
+### `parse(text, table?)`
+
+Converts a BRF string (ASCII Braille) to LaTeX. Returns a `Promise<string>`.
+Requires `configure()` to have been called first.
+
+Default table: `en-ueb-g2.ctb` (English UEB Grade 2).
+
+### `ascii2Braille(str)` / `braille2Ascii(str)`
+
+Convert between ASCII Braille notation and Unicode Braille characters.
+
+### `nemeth_to_latex(str)`
+
+Convert a line of Nemeth Braille (ASCII or Unicode) to a LaTeX math string.
+
+---
+
+## Usage in SvelteKit / browser
+
+```js
+import { base } from '$app/paths';
+import { configure, parse } from '@brailletools/braille2latex';
+
+const b = base === '/' ? '' : base;
+configure({
+  liblouisCapiUrl:    `.${b}/liblouis/build-tables-embeded-root-utf16.js`,
+  liblouisEasyApiUrl: `.${b}/liblouis/easy-api.js`,
+});
+
+const latex = await parse(brfFileContents);
+```
+
+## Command-line sample (Node.js)
+
+For quick conversions from the terminal — Nemeth math sections are fully converted;
+text sections are shown as Unicode Braille (liblouis back-translation requires a browser Worker):
 
 ```bash
-npm run build
+node sample.mjs "Sample Quiz.brf"
 ```
 
+See [sample.mjs](./sample.mjs) for the full script.
+
+## Credits
+
+- [Abraham](https://www.desmos.com/api/v1.11/docs/abraham.html) (Desmos) — Nemeth to LaTeX
+- [liblouis](https://github.com/liblouis/liblouis.js) — Braille back-translation (LGPL v2.1+)
