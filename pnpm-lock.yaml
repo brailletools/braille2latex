@@ -1,0 +1,29 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      liblouis:
+        specifier: ^0.4.0
+        version: 0.4.0
+
+packages:
+
+  liblouis-build@3.2.0-rc:
+    resolution: {integrity: sha512-wRQKhsc0RXDrOQbRN67qvKdN5facgINMYu7Ot0VMvNIawVHTxdkIfjjC7aq1jrtrwdbMAvMSP3nttq+I4p/A4Q==}
+
+  liblouis@0.4.0:
+    resolution: {integrity: sha512-ViuoMFbSbf39RyXYU/Q9IeQ5IYUdJVPrgz5nmXjkNkK5rmorivDDWRZLibPhEaip0Dpt00CG+NX1WQGHWCa+ow==}
+
+snapshots:
+
+  liblouis-build@3.2.0-rc: {}
+
+  liblouis@0.4.0:
+    dependencies:
+      liblouis-build: 3.2.0-rc
