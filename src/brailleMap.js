@@ -39,7 +39,11 @@ export function ascii2Braille(input_str) {
 export function braille2Ascii(input_str) {
 	try {
 		if (!UnicodeBraille) return input_str;
-		return UnicodeBraille.toBrailleAscii(input_str);
+		// toBrailleAscii doesn't handle \n — it produces the string "undefined" for each newline.
+		// Process line by line (mirroring ascii2Braille) to preserve newlines correctly.
+		const lines = input_str.split('\n');
+		const results = lines.map(line => UnicodeBraille.toBrailleAscii(line) ?? line);
+		return results.join('\n');
 	} catch (error) {
 		console.warn('UnicodeBraille.toBrailleAscii failed:', error);
 		return input_str; // Return original if conversion fails
