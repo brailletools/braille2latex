@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { nemeth_to_latex, ascii2Braille } from './brailleMap.js';
-import liblouis from 'liblouis/easy-api';
+import liblouis from 'liblouis/easy-api.js';
 
 let asyncLiblouis = null;
 let liblouisReadyPromise = null;
@@ -38,6 +38,35 @@ export function configure({ liblouisCapiUrl, liblouisEasyApiUrl }) {
 
 // Default liblouis table for back-translation if caller does not override
 const defaultTable = 'en-ueb-g2.ctb';
+
+// Default translate(unicodeBraille, table) backend: the liblouis WASM Easy API
+// configured via configure(). Callers with a different backend (e.g. the CLI's
+// lou_translate binary) pass their own translate function to to_latex()/parseWithTranslator().
+async function defaultLiblouisTranslate(unicodeBraille, table) {
+	return await new Promise((resolve, reject) => {
+		const timeoutId = setTimeout(() => {
+			reject(new Error('backTranslateString timeout after .5 seconds'));
+		}, 500);
+
+		try {
+			asyncLiblouis.backTranslateString(
+				table,
+				unicodeBraille,
+				e => {
+					clearTimeout(timeoutId);
+					if (e === null || e === undefined) {
+						reject(new Error('backTranslateString returned null or undefined'));
+					} else {
+						resolve(e);
+					}
+				}
+			);
+		} catch (syncError) {
+			clearTimeout(timeoutId);
+			reject(syncError);
+		}
+	});
+}
 
 const tokens = {
 	ROOT: 'ROOT',
@@ -117,14 +146,36 @@ class Element {
 		return this.latex;
 	}
 
-	async to_latex(table = defaultTable) {
-		// Walk the tree and build LaTeX using the chosen translation table
+	// Back-translates this node's own .value (used by STRING, BOLD, and ITALIC
+	// nodes, which all hold their text directly rather than in child nodes).
+	// Falls back to the raw ASCII value if conversion or translation fails.
+	async translate_value(table, translate) {
+		const stringValue = this.get_value();
+		const unicodeBraille = ascii2Braille(stringValue);
+
+		if (!unicodeBraille || unicodeBraille.length === 0) {
+			console.warn('[processFile] Warning: ascii2Braille returned empty string for:', JSON.stringify(stringValue));
+			return stringValue;
+		}
+
+		try {
+			return await translate(unicodeBraille, table);
+		} catch (error) {
+			console.warn('[processFile] Back-translation failed, using fallback:', error.message);
+			return stringValue;
+		}
+	}
+
+	async to_latex(table = defaultTable, translate = defaultLiblouisTranslate) {
+		// Walk the tree and build LaTeX using the chosen translation table.
+		// translate(unicodeBraille, table) back-translates a STRING node's text;
+		// defaults to the liblouis WASM backend used by configure()/parse().
 		this.reset_latex();
 		switch (this.token) {
 			case tokens.ROOT:
 				for (const child of this.children) {
 					try {
-						this.add_latex(await child.to_latex(table));
+						this.add_latex(await child.to_latex(table, translate));
 					} catch (error) {
 						console.error('[processFile] Error processing ROOT child:', error.message, 'token:', child.token);
 						// Continue processing remaining children
@@ -134,7 +185,7 @@ class Element {
 			case tokens.PARA:
 				for (const child of this.children) {
 					try {
-						const childLatex = await child.to_latex(table);
+						const childLatex = await child.to_latex(table, translate);
 						const startsWithDisplayMath = /^\s*\$\$/.test(childLatex);
 						if (startsWithDisplayMath && this.latex.length > 0 && !this.latex.endsWith('\n\n')) {
 							// Ensure display math starts on its own line when it follows text
@@ -173,7 +224,7 @@ class Element {
 				// EQUATION contains a single NEMETH child that will add its own $ delimiters
 				for (const child of this.children) {
 					try {
-						this.add_latex(await child.to_latex(table));
+						this.add_latex(await child.to_latex(table, translate));
 					} catch (error) {
 						console.error('[processFile] Error processing EQUATION child:', error.message, 'token:', child.token);
 						// Continue processing remaining children
@@ -183,9 +234,10 @@ class Element {
 				break;
 			case tokens.BOLD:
 				this.add_latex('\\textbf{');
+				if (this.value) this.add_latex(await this.translate_value(table, translate));
 				for (const child of this.children) {
 					try {
-						this.add_latex(await child.to_latex(table));
+						this.add_latex(await child.to_latex(table, translate));
 					} catch (error) {
 						console.error('[processFile] Error processing BOLD child:', error.message, 'token:', child.token);
 						// Continue processing remaining children
@@ -195,9 +247,10 @@ class Element {
 				break;
 			case tokens.ITALIC:
 				this.add_latex('\\textit{');
+				if (this.value) this.add_latex(await this.translate_value(table, translate));
 				for (const child of this.children) {
 					try {
-						this.add_latex(await child.to_latex(table));
+						this.add_latex(await child.to_latex(table, translate));
 					} catch (error) {
 						console.error('[processFile] Error processing ITALIC child:', error.message, 'token:', child.token);
 						// Continue processing remaining children
@@ -206,51 +259,7 @@ class Element {
 				this.add_latex('}');
 				break;
 			case tokens.STRING:
-				if (this.value) {
-					const stringValue = this.get_value(); 
-					
-					// Convert ASCII braille to Unicode braille first
-					const unicodeBraille = ascii2Braille(stringValue);
-					
-					// Validate that the conversion was successful
-					if (!unicodeBraille || unicodeBraille.length === 0) {
-						console.warn('[processFile] Warning: ascii2Braille returned empty string for:', JSON.stringify(stringValue));
-						this.add_latex(stringValue); // Fallback to original ASCII string
-						break;
-					}
-					
-					let translationResult = stringValue; // default fallback
-					try {
-						const result = await new Promise((resolve, reject) => {
-							const timeoutId = setTimeout(() => {
-								reject(new Error('backTranslateString timeout after .5 seconds'));
-							}, 500);
-							
-							try {
-								asyncLiblouis.backTranslateString(
-									table,
-									unicodeBraille,
-									e => {
-										clearTimeout(timeoutId);
-										if (e === null || e === undefined) {
-										reject(new Error('backTranslateString returned null or undefined'));
-									} else {
-											resolve(e);
-										}
-									}
-								);
-							} catch (syncError) {
-								clearTimeout(timeoutId);
-								reject(syncError);
-							}
-						});
-						translationResult = result;
-					} catch (error) {
-						console.warn('[processFile] Back-translation failed, using fallback:', error.message);
-						// translationResult already set to stringValue above
-					}
-					this.add_latex(translationResult);
-				}
+				if (this.value) this.add_latex(await this.translate_value(table, translate));
 				break;
 			default:
 				console.info('Unknown token: ' + this.token);
@@ -268,7 +277,24 @@ export async function parse(text, table = defaultTable) {
 	return await parseTree.to_latex(table);
 }
 
-function lex(text) {
+/**
+ * Like parse(), but for callers supplying their own back-translation backend
+ * instead of the liblouis WASM Easy API (e.g. the CLI, which shells out to
+ * lou_translate). Does not require configure() to have been called.
+ *
+ * @param {string} text
+ * @param {string} table - liblouis table name
+ * @param {(unicodeBraille: string, table: string) => Promise<string>} translate
+ */
+export async function parseWithTranslator(text, table = defaultTable, translate) {
+	if (typeof text !== 'string') throw new Error('Input must be a string');
+	if (typeof translate !== 'function') throw new Error('parseWithTranslator requires a translate(unicodeBraille, table) function');
+
+	const parseTree = lex(text);
+	return await parseTree.to_latex(table, translate);
+}
+
+export function lex(text) {
 	if (typeof text !== 'string') throw new Error('Input must be a string');
 
 	text = text.replace(/(\r\n|\n|\r)/g, '\n');

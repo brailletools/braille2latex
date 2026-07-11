@@ -6,8 +6,28 @@
   "exports": {
     ".": "./src/index.js"
   },
+  "bin": {
+    "braille2latex": "./bin/braille2latex.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "README.md",
+    "LICENSE.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "peerDependencies": {
     "liblouis": "^0.4.0"
+  },
+  "peerDependenciesMeta": {
+    "liblouis": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "repository": {
     "type": "git",
@@ -15,7 +35,7 @@
   },
   "license": "MIT",
   "scripts": {
-    "lint": "eslint src sample.mjs"
+    "lint": "eslint src bin"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
