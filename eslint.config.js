@@ -13,7 +13,7 @@ export default [
         },
     },
     {
-        files: ['*.mjs', '*.cjs'],
+        files: ['*.mjs', '*.cjs', 'bin/**/*.js'],
         languageOptions: {
             globals: { ...globals.node },
         },
