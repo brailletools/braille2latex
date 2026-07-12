@@ -7,12 +7,16 @@ let liblouisReadyPromise = null;
 /**
  * Configure the liblouis backend. Must be called before parse().
  *
- * Expects `globalThis.liblouis.EasyApiAsync` to already be available — load the
+ * Expects `globalThis.LiblouisEasyApiAsync` to already be available — load the
  * vendored easy-api.js (fetched at build time by @brailletools/liblouis-env-web's
  * `liblouis-fetch-web`) via a plain <script> tag in your app's HTML template
  * before calling configure(). braille2latex doesn't fetch or inject that script
  * itself: where static assets live and how they're loaded is app-specific (e.g.
  * SvelteKit's app.html), so that's the consuming app's job, not this library's.
+ *
+ * (easy-api.js's UMD "browser globals" branch sets `globalThis.liblouis` to an
+ * *instance* of the sync EasyApi, and the async class as its own top-level global
+ * `globalThis.LiblouisEasyApiAsync` — not nested under `liblouis`. See brailletools/braille2latex#16.)
  *
  * @param {object} options
  * @param {string} options.liblouisCapiUrl   - URL to the liblouis build (e.g. build-no-tables-utf32.js)
@@ -38,10 +42,10 @@ let liblouisReadyPromise = null;
  */
 export function configure({ liblouisCapiUrl, liblouisEasyApiUrl, liblouisTablesUrl }) {
 	liblouisReadyPromise = (async () => {
-		const EasyApiAsync = globalThis.liblouis?.EasyApiAsync;
+		const EasyApiAsync = globalThis.LiblouisEasyApiAsync;
 		if (!EasyApiAsync) {
 			throw new Error(
-				'[braille2latex] configure() needs `liblouis.EasyApiAsync` to already be available as a ' +
+				'[braille2latex] configure() needs `LiblouisEasyApiAsync` to already be available as a ' +
 				'global. Load the vendored easy-api.js (see @brailletools/liblouis-env-web) via a <script> ' +
 				'tag before calling configure() — see this package\'s README for a working example.'
 			);
