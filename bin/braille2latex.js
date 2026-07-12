@@ -3,9 +3,9 @@
 //
 // Nemeth math sections are converted via Abraham (pure JS, always available).
 // Text sections are back-translated via the system `lou_translate` binary if one
-// can be found (LOU_TRANSLATE_PATH env var, or already on PATH); otherwise they
-// fall back to Unicode braille. This command never installs lou_translate itself —
-// see https://github.com/brailletools/liblouis-env (run `liblouis-fetch`) for a
+// can be found (LOU_TRANSLATE_PATH env var, or already on PATH — resolved via
+// @brailletools/liblouis-env); otherwise they fall back to Unicode braille. This
+// command never installs lou_translate itself — run `npx liblouis-fetch` for a
 // cross-platform way to install it.
 //
 // Usage:
@@ -19,6 +19,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { resolveLouTranslate } from '@brailletools/liblouis-env';
 import { parseWithTranslator } from '../src/index.js';
 
 // ── Argument parsing ────────────────────────────────────────────────────────
@@ -49,18 +50,8 @@ if (!filePath) {
     process.exit(1);
 }
 
-// ── Resolve lou_translate (resolve-only — never installs anything) ─────────
-
-function resolveLouTranslate() {
-    if (process.env.LOU_TRANSLATE_PATH) return process.env.LOU_TRANSLATE_PATH;
-    try {
-        const finder = process.platform === 'win32' ? 'where' : 'which';
-        const found = execFileSync(finder, ['lou_translate'], { encoding: 'utf8' }).split('\n')[0].trim();
-        return found || null;
-    } catch {
-        return null;
-    }
-}
+// lou_translate resolution (resolve-only — never installs anything) now lives
+// in @brailletools/liblouis-env, imported above.
 
 let louTranslatePath = null;
 if (!brailleOnly) {
@@ -68,8 +59,7 @@ if (!brailleOnly) {
     if (!louTranslatePath) {
         process.stderr.write(
             '[braille2latex] lou_translate not found; text sections will be shown as Unicode braille.\n' +
-            '[braille2latex] Install it via liblouis-env: run `liblouis-fetch` ' +
-            '(https://github.com/brailletools/liblouis-env), or set LOU_TRANSLATE_PATH.\n'
+            '[braille2latex] Install it with: npx liblouis-fetch  (or set LOU_TRANSLATE_PATH).\n'
         );
     }
 }
