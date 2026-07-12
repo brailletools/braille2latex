@@ -17,15 +17,19 @@ Once published, the usual form will work:
 npm install @brailletools/braille2latex
 ```
 
-`liblouis` is an optional peer dependency, only needed if you call `configure()`/`parse()`
-for browser-side back-translation (see below). The command-line tool doesn't need it.
+For the command tool, `@brailletools/liblouis-env` (resolving `lou_translate`) is its only dependency. `configure()`/`parse()` (browser-side back-translation,
+see below) need `liblouis.EasyApiAsync` loaded as a global via a `<script>` tag; braille2latex has no npm dependency for that either.
 
 ## API
 
-### `configure({ liblouisCapiUrl, liblouisEasyApiUrl })`
+### `configure({ liblouisCapiUrl, liblouisEasyApiUrl, liblouisTablesUrl? })`
 
-Must be called once before `parse()`. Provides the URLs (browser) or file paths (Node.js)
-to the liblouis WebAssembly build.
+Must be called once before `parse()`. Provides the URLs to the liblouis WebAssembly build.
+Requires `liblouis.EasyApiAsync` to already be available as a global — load the vendored
+`easy-api.js` via a `<script>` tag before calling `configure()`; braille2latex doesn't fetch
+or inject that script itself (see [Usage in SvelteKit / browser](#usage-in-sveltekit--browser)
+below). `liblouisTablesUrl` is only needed for a "no-tables" build (tables loaded on demand
+rather than compiled in).
 
 ### `parse(text, table?)`
 
@@ -39,7 +43,7 @@ Default table: `en-ueb-g2.ctb` (English UEB Grade 2).
 Same as `parse()`, but with a caller-supplied back-translation backend instead of the
 liblouis WASM Easy API — doesn't require `configure()`. `translate(unicodeBraille, table)`
 should return `Promise<string>`. This is what the CLI uses (see below) to back-translate via
-a `lou_translate` binary instead of the browser WASM build.
+a `lou_translate` binary. 
 
 ### `lex(text)`
 
@@ -58,14 +62,35 @@ Convert a line of Nemeth Braille (ASCII or Unicode) to a LaTeX math string.
 
 ## Usage in SvelteKit / browser
 
+liblouis's own npm packages (`liblouis`/`liblouis-build`) are unmaintained (years behind current liblouis) and no longer importable as a bundler dependency. Fetch a current browser build instead with
+[`@brailletools/liblouis-env-web`](https://github.com/brailletools/liblouis-env/tree/main/js/packages/web),
+which writes a `manifest.json` describing what it fetched (filenames and build variant vary by pinned upstream commit — read the manifest rather than hardcoding them), then load the vendored `easy-api.js` as a plain `<script>` so it's available as a global before `configure()` runs — braille2latex itself has no dependency on `@brailletools/liblouis-env-web` or on any script-loading mechanism; where static assets live and how they're loaded is app-specific, so that step belongs here, in the consuming app:
+
+```json
+// package.json
+"scripts": {
+  "dev":   "liblouis-fetch-web static/liblouis && vite dev",
+  "build": "liblouis-fetch-web static/liblouis && vite build"
+}
+```
+
+```html
+<!-- app.html -->
+<script src="%sveltekit.assets%/liblouis/easy-api.js"></script>
+```
+
 ```js
+// +page.svelte
 import { base } from '$app/paths';
 import { configure, parse } from '@brailletools/braille2latex';
+import manifest from '../../static/liblouis/manifest.json';
 
 const b = base === '/' ? '' : base;
 configure({
-  liblouisCapiUrl:    `.${b}/liblouis/build-tables-embeded-root-utf16.js`,
-  liblouisEasyApiUrl: `.${b}/liblouis/easy-api.js`,
+  liblouisCapiUrl:    `.${b}/liblouis/${manifest.buildFile}`,
+  liblouisEasyApiUrl: `.${b}/liblouis/${manifest.easyApiFile}`,
+  // Only needed when manifest.variant === 'no-tables':
+  liblouisTablesUrl:  `.${b}/liblouis/${manifest.tablesDir}/`,
 });
 
 const latex = await parse(brfFileContents);
@@ -85,11 +110,15 @@ braille2latex <file.brf> [--table TABLE | --dictionary TABLE] [--full-doc] [--br
 - `-o, --output FILE` — write to `FILE` instead of stdout.
 
 Nemeth math sections are fully converted via the bundled [Abraham](#credits) parser (pure JS, no
-setup required). Text sections are back-translated by shelling out to a `lou_translate` binary if one
-can be found (the `LOU_TRANSLATE_PATH` environment variable, or `lou_translate` already on `PATH`); if
-none is found, text falls back to Unicode Braille and a note is printed to stderr. This command never
-installs anything itself — for a one-step, cross-platform way to install `lou_translate`, use
-[liblouis-env](https://github.com/brailletools/liblouis-env) (run `liblouis-fetch` once).
+setup required). Text sections are back-translated by shelling out to a `lou_translate` binary,
+resolved via [`@brailletools/liblouis-env`](https://github.com/brailletools/liblouis-env/tree/main/js/packages/node)
+(checks the `LOU_TRANSLATE_PATH` environment variable, then `PATH`); if none is found, text falls back
+to Unicode Braille and a note is printed to stderr. This command never installs anything itself — to
+install `lou_translate` in one step, run:
+
+```bash
+npx liblouis-fetch
+```
 
 Examples:
 

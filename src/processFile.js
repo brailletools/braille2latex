@@ -1,6 +1,5 @@
 // @ts-nocheck
 import { nemeth_to_latex, ascii2Braille } from './brailleMap.js';
-import liblouis from 'liblouis/easy-api.js';
 
 let asyncLiblouis = null;
 let liblouisReadyPromise = null;
@@ -8,32 +7,74 @@ let liblouisReadyPromise = null;
 /**
  * Configure the liblouis backend. Must be called before parse().
  *
+ * Expects `globalThis.liblouis.EasyApiAsync` to already be available — load the
+ * vendored easy-api.js (fetched at build time by @brailletools/liblouis-env-web's
+ * `liblouis-fetch-web`) via a plain <script> tag in your app's HTML template
+ * before calling configure(). braille2latex doesn't fetch or inject that script
+ * itself: where static assets live and how they're loaded is app-specific (e.g.
+ * SvelteKit's app.html), so that's the consuming app's job, not this library's.
+ *
  * @param {object} options
- * @param {string} options.liblouisCapiUrl   - URL to build-tables-embeded-root-utf16.js
+ * @param {string} options.liblouisCapiUrl   - URL to the liblouis build (e.g. build-no-tables-utf32.js)
  * @param {string} options.liblouisEasyApiUrl - URL to easy-api.js
+ * @param {string} [options.liblouisTablesUrl] - URL to a tables/ directory, required
+ *   when the build behind liblouisCapiUrl doesn't have tables compiled in (e.g. a
+ *   "no-tables" build from @brailletools/liblouis-env-web's manifest.json); enables
+ *   on-demand table loading instead.
  *
  * Example (SvelteKit):
+ *   <!-- app.html -->
+ *   <script src="%sveltekit.assets%/liblouis/easy-api.js"></script>
+ *
+ *   // +page.svelte
  *   import { base } from '$app/paths';
  *   import { configure } from '@brailletools/braille2latex';
  *   const b = base === '/' ? '' : base;
  *   configure({
- *     liblouisCapiUrl:    `.${b}/liblouis/build-tables-embeded-root-utf16.js`,
+ *     liblouisCapiUrl:    `.${b}/liblouis/build-no-tables-utf32.js`,
  *     liblouisEasyApiUrl: `.${b}/liblouis/easy-api.js`,
+ *     liblouisTablesUrl:  `.${b}/liblouis/tables`,
  *   });
  */
-export function configure({ liblouisCapiUrl, liblouisEasyApiUrl }) {
-	asyncLiblouis = new liblouis.EasyApiAsync({
-		capi:    liblouisCapiUrl,
-		easyapi: liblouisEasyApiUrl,
-	});
-	asyncLiblouis.setLogLevel(0);
-	liblouisReadyPromise = new Promise((resolve, reject) => {
-		const timeoutId = setTimeout(() => reject(new Error('liblouis version() timed out')), 10000);
-		asyncLiblouis.version(() => { clearTimeout(timeoutId); resolve(); });
-	}).catch(error => {
+export function configure({ liblouisCapiUrl, liblouisEasyApiUrl, liblouisTablesUrl }) {
+	liblouisReadyPromise = (async () => {
+		const EasyApiAsync = globalThis.liblouis?.EasyApiAsync;
+		if (!EasyApiAsync) {
+			throw new Error(
+				'[braille2latex] configure() needs `liblouis.EasyApiAsync` to already be available as a ' +
+				'global. Load the vendored easy-api.js (see @brailletools/liblouis-env-web) via a <script> ' +
+				'tag before calling configure() — see this package\'s README for a working example.'
+			);
+		}
+		asyncLiblouis = new EasyApiAsync({
+			capi:    liblouisCapiUrl,
+			easyapi: liblouisEasyApiUrl,
+		});
+		asyncLiblouis.setLogLevel(0);
+		if (liblouisTablesUrl) {
+			asyncLiblouis.enableOnDemandTableLoading(liblouisTablesUrl);
+		}
+		await new Promise((resolve, reject) => {
+			const timeoutId = setTimeout(() => reject(new Error('liblouis version() timed out')), 10000);
+			asyncLiblouis.version(() => { clearTimeout(timeoutId); resolve(); });
+		});
+	})().catch(error => {
 		console.error('[liblouis] Initialization failed', error);
 		throw error;
 	});
+}
+
+/**
+ * Resolves once configure() has finished setting up the liblouis backend (or
+ * rejects if setup failed). parse() already awaits this internally before
+ * translating — this is exposed separately for callers that want to gate UI
+ * state (e.g. a loading indicator) on readiness without triggering a parse.
+ *
+ * @returns {Promise<void>}
+ */
+export function whenReady() {
+	if (!liblouisReadyPromise) throw new Error('Call configure() before whenReady()');
+	return liblouisReadyPromise;
 }
 
 // Default liblouis table for back-translation if caller does not override
