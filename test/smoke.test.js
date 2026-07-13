@@ -68,18 +68,45 @@ test('lex() closes a NEMETH block opened mid-line via the word-based branch', ()
 	assert.equal(para.token, 'PARA');
 	const nemeth = para.children.find((c) => c.token === 'NEMETH');
 	assert.ok(nemeth, 'expected a NEMETH child');
-	assert.equal(nemeth.value, 'ax =b', 'NEMETH value must not include the closing "_:" marker');
+	// 'ax = b' preserves the source's literal spacing (matches what the dedicated
+	// character-by-character NEMETH branch would produce for the same content) —
+	// not 'ax =b'. 
+	assert.equal(nemeth.value, 'ax = b', 'NEMETH value must not include the closing "_:" marker');
 
 	// Content typed after the equation must land in a sibling node, not get
 	// absorbed into the (never-closed) NEMETH block.
 	const tree2 = lex('C\n_%ax = b_:\nmore text');
 	const para2 = tree2.children[0];
 	const nemeth2 = para2.children.find((c) => c.token === 'NEMETH');
-	assert.equal(nemeth2.value, 'ax =b');
+	assert.equal(nemeth2.value, 'ax = b');
 	assert.ok(
 		para2.children.some((c) => c.token === 'STRING' && c.value?.includes('more')),
 		'trailing text after the equation must be its own STRING sibling'
 	);
+});
+
+test('lex() does not drop a single-character word after the first word/run in a paragraph', () => {
+	// Regression test for braille2latex#20: a single-character word (e.g. "a")
+	// occurring anywhere after the first word/run used to get nested as a *child*
+	// of the current STRING node instead of merging into it — and to_latex()'s
+	// STRING case never recurses into .children, so the word silently vanished
+	// from the rendered output.
+	const tree = lex('I have a big dog');
+	const para = tree.children[0];
+	assert.equal(para.children.length, 1, 'all words on one unmarked line merge into a single STRING run');
+	assert.equal(para.children[0].value, 'I have a big dog');
+});
+
+test('lex() keeps correct spacing around a single-character word inside a BOLD run', () => {
+	// Regression test for braille2latex#20's secondary symptom: the old special
+	// case for single-character words returned early inside BOLD/ITALIC runs,
+	// skipping the trailing-space append every other word gets — gluing the next
+	// word directly onto it (e.g. "big a dog" rendered as "big adog").
+	const tree = lex('_.big a dog_.');
+	const para = tree.children[0];
+	const bold = para.children.find((c) => c.token === 'BOLD');
+	assert.ok(bold, 'expected a BOLD child');
+	assert.equal(bold.value, 'big a dog');
 });
 
 test('parseWithTranslator() converts plain text to LaTeX without needing liblouis installed', async () => {
