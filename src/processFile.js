@@ -151,12 +151,13 @@ async function defaultLiblouisTranslateForward(text, table) {
 }
 
 /**
- * Forward-translates print text to Unicode braille using the liblouis WASM backend
- * configured via configure(). The mirror of parse()'s back-translation direction.
+ * Forward-translates print text to braille using the liblouis WASM backend
+ * configured via configure(). This returns liblouis's braille output in
+ * braille-ASCII (not Unicode braille glyphs); use ascii2Braille() if you need Unicode.
  *
  * @param {string} text
  * @param {string} table
- * @returns {Promise<string>} Unicode braille
+ * @returns {Promise<string>} Braille-ASCII
  */
 export async function translateForward(text, table = defaultTable) {
 	if (typeof text !== 'string') throw new Error('Input must be a string');
