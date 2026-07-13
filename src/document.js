@@ -104,6 +104,37 @@ function segmentMixedLatex(latexSlice) {
 	return segments;
 }
 
+// Forward-translates a PARA node's latex text (or, from applyLatexEdit's partial-
+// update path, just a touched sub-range of one) into braille-ASCII — segments
+// prose vs inline/display math (see segmentMixedLatex's doc comment above) and
+// translates each through the right pipeline. Shared by both the whole-node
+// fallback path and the partial/child-region path below, so they build a
+// replacement string the same way.
+async function regenerateParaBraille(latexText, table, forward) {
+	const parts = [];
+	for (const segment of segmentMixedLatex(latexText)) {
+		if (segment.type === 'math') {
+			parts.push('_%' + latex_to_nemeth(segment.text) + '_:');
+		} else {
+			const prose = stripProseMarkup(segment.text);
+			if (prose === '') continue;
+			// liblouis's translateString(..., backtranslate=false) returns
+			// braille-ASCII text directly (e.g. "c " for "can", the grade-2
+			// contraction) — NOT Unicode braille glyphs, despite the parallel
+			// with defaultLiblouisTranslate's back-translate direction (which
+			// takes Unicode braille IN). Running this back through
+			// braille2Ascii() a second time fed it non-Unicode-braille input
+			// and hit the same "undefined" sentinel bug from a different
+			// angle. Use the result as-is; it's already in the ASCII-braille
+			// form node.value expects (case doesn't affect which cell a basic
+			// letter maps to, so liblouis's lowercase output round-trips fine
+			// through ascii2Braille() later).
+			parts.push(await forward(prose, table));
+		}
+	}
+	return parts.join('');
+}
+
 export class DualDocument {
 	constructor({ tree, table, translate, translateForward }) {
 		this._tree = tree;
@@ -335,34 +366,45 @@ export class DualDocument {
 			if (node.token === tokens.EQUATION) {
 				const mathBody = extractMathBody(latexSlice);
 				newBrailleForNode = '_%' + latex_to_nemeth(mathBody) + '_:';
-			} else {
-				// PARA nodes can mix prose and math as siblings (see
-				// segmentMixedLatex's doc comment) — translate each segment through
-				// the right pipeline and concatenate, rather than treating the whole
-				// slice as prose.
+			} else if (node.childRangesReliable === true) {
+				// Only forward-translate the actually-changed sub-range and splice it
+				// into the node's existing (untouched) braille, instead of regenerating
+				// the whole paragraph — see braille2latex#19. node.latex and latexSlice
+				// are both node-relative (0-based at this node's own latex start), same
+				// coordinate space assignParaChildBrailleRanges() stamped children's
+				// latexRange/brailleRange in, so this diff needs no extra offset math
+				// beyond what the document-level diff above already did.
 				const forward = this._translateForward || defaultTranslateForward;
-				const parts = [];
-				for (const segment of segmentMixedLatex(latexSlice)) {
-					if (segment.type === 'math') {
-						parts.push('_%' + latex_to_nemeth(segment.text) + '_:');
-					} else {
-						const prose = stripProseMarkup(segment.text);
-						if (prose === '') continue;
-						// liblouis's translateString(..., backtranslate=false) returns
-						// braille-ASCII text directly (e.g. "c " for "can", the grade-2
-						// contraction) — NOT Unicode braille glyphs, despite the parallel
-						// with defaultLiblouisTranslate's back-translate direction (which
-						// takes Unicode braille IN). Running this back through
-						// braille2Ascii() a second time fed it non-Unicode-braille input
-						// and hit the same "undefined" sentinel bug from a different
-						// angle. Use the result as-is; it's already in the ASCII-braille
-						// form node.value expects (case doesn't affect which cell a basic
-						// letter maps to, so liblouis's lowercase output round-trips fine
-						// through ascii2Braille() later).
-						parts.push(await forward(prose, this.table));
-					}
-				}
-				newBrailleForNode = parts.join('');
+				const { prefixLen: childPrefixLen, suffixLen: childSuffixLen } = diffRegion(node.latex, latexSlice);
+				const oldChildRegionStart = childPrefixLen;
+				const oldChildRegionEnd = node.latex.length - childSuffixLen;
+
+				const children = node.children;
+				const childFirstIdx = findOwningIndex(children, 'latexRange', oldChildRegionStart);
+				const childLastIdx =
+					oldChildRegionEnd > oldChildRegionStart
+						? findOwningIndex(children, 'latexRange', oldChildRegionEnd - 1)
+						: childFirstIdx;
+
+				const childRegionStart = children[childFirstIdx].latexRange.start;
+				const childRegionNewEnd = children[childLastIdx].latexRange.end + delta;
+				const newChildRegionLatex = latexSlice.slice(childRegionStart, childRegionNewEnd);
+
+				const newBrailleForChildRegion = await regenerateParaBraille(newChildRegionLatex, this.table, forward);
+
+				const oldNodeBrailleText = this.brailleText.slice(node.brailleRange.start, node.brailleRange.end);
+				const childBrailleStart = children[childFirstIdx].brailleRange.start;
+				const childBrailleOldEnd = children[childLastIdx].brailleRange.end;
+				newBrailleForNode =
+					oldNodeBrailleText.slice(0, childBrailleStart) +
+					newBrailleForChildRegion +
+					oldNodeBrailleText.slice(childBrailleOldEnd);
+			} else {
+				// No reliable child ranges for this node (e.g. a lexer edge case the
+				// marker-only scan in processFile.js doesn't cover) — fall back to
+				// regenerating the whole node, same as before braille2latex#19's fix.
+				const forward = this._translateForward || defaultTranslateForward;
+				newBrailleForNode = await regenerateParaBraille(latexSlice, this.table, forward);
 			}
 		} catch (error) {
 			node.status = 'error';
