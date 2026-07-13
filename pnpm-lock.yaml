@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@brailletools/liblouis-env':
-        specifier: github:brailletools/liblouis-env#path:/js/packages/node
-        version: https://codeload.github.com/brailletools/liblouis-env/tar.gz/6f9bcd3e0d31fa7f19d07f8702772f8863be5312#path:/js/packages/node
+        specifier: github:brailletools/liblouis-env#v0.1.1&path:/js/packages/node
+        version: https://codeload.github.com/brailletools/liblouis-env/tar.gz/b7de53e203eec2c59b42f3236636da0a4e2bf48a#path:/js/packages/node
     devDependencies:
       '@eslint/js':
         specifier: ^9.0.0
@@ -24,8 +24,8 @@ importers:
 
 packages:
 
-  '@brailletools/liblouis-env@https://codeload.github.com/brailletools/liblouis-env/tar.gz/6f9bcd3e0d31fa7f19d07f8702772f8863be5312#path:/js/packages/node':
-    resolution: {path: /js/packages/node, tarball: https://codeload.github.com/brailletools/liblouis-env/tar.gz/6f9bcd3e0d31fa7f19d07f8702772f8863be5312}
+  '@brailletools/liblouis-env@https://codeload.github.com/brailletools/liblouis-env/tar.gz/b7de53e203eec2c59b42f3236636da0a4e2bf48a#path:/js/packages/node':
+    resolution: {path: /js/packages/node, tarball: https://codeload.github.com/brailletools/liblouis-env/tar.gz/b7de53e203eec2c59b42f3236636da0a4e2bf48a}
     version: 0.1.0
     engines: {node: '>=18'}
     hasBin: true
@@ -376,7 +376,7 @@ packages:
 
 snapshots:
 
-  '@brailletools/liblouis-env@https://codeload.github.com/brailletools/liblouis-env/tar.gz/6f9bcd3e0d31fa7f19d07f8702772f8863be5312#path:/js/packages/node':
+  '@brailletools/liblouis-env@https://codeload.github.com/brailletools/liblouis-env/tar.gz/b7de53e203eec2c59b42f3236636da0a4e2bf48a#path:/js/packages/node':
     dependencies:
       fflate: 0.8.3
 

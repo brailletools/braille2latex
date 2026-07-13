@@ -113,7 +113,61 @@ async function defaultLiblouisTranslate(unicodeBraille, table) {
 	});
 }
 
-const tokens = {
+// Unique within a single lex() call (reset at the top of lex()). Not stable across
+// edits/re-parses — DualDocument (document.js) assigns its own persistent id to
+// top-level nodes for that purpose.
+let elementIdCounter = 0;
+
+// Forward liblouis translation (print text -> braille), the mirror of
+// defaultLiblouisTranslate's back-translation. Same worker, same promise/timeout
+// shape; only `backtranslate` flips to false. Used by DualDocument.applyLatexEdit
+// (document.js) to translate an edited prose (STRING/BOLD/ITALIC) node's LaTeX text
+// back into braille.
+async function defaultLiblouisTranslateForward(text, table) {
+	return await new Promise((resolve, reject) => {
+		const timeoutId = setTimeout(() => {
+			reject(new Error('translateString timeout after .5 seconds'));
+		}, 500);
+
+		try {
+			asyncLiblouis.translateString(
+				table,
+				text,
+				false,
+				e => {
+					clearTimeout(timeoutId);
+					if (e === null || e === undefined) {
+						reject(new Error('translateString returned null or undefined'));
+					} else {
+						resolve(e);
+					}
+				}
+			);
+		} catch (syncError) {
+			clearTimeout(timeoutId);
+			reject(syncError);
+		}
+	});
+}
+
+/**
+ * Forward-translates print text to braille using the liblouis WASM backend
+ * configured via configure(). This returns liblouis's braille output in
+ * braille-ASCII (not Unicode braille glyphs); use ascii2Braille() if you need Unicode.
+ *
+ * @param {string} text
+ * @param {string} table
+ * @returns {Promise<string>} Braille-ASCII
+ */
+export async function translateForward(text, table = defaultTable) {
+	if (typeof text !== 'string') throw new Error('Input must be a string');
+	if (!liblouisReadyPromise) throw new Error('Call configure() before translateForward()');
+
+	await liblouisReadyPromise;
+	return await defaultLiblouisTranslateForward(text, table);
+}
+
+export const tokens = {
 	ROOT: 'ROOT',
 	NEMETH: 'NEMETH',
 	NEMETHSTART: 'NEMETHSTART',
@@ -134,10 +188,16 @@ const tokenStrings = {
 
 class Element {
 	constructor(token, parent = null) {
+		this.id = elementIdCounter++;
 		this.token = token; // token type stored at this node
 		this.value = undefined; // text content for STRING/NEMETH/etc.
 		this.children = []; // nested token nodes
 		this.parent = parent; // parent node pointer
+		// Offsets into the braille source / generated LaTeX string. Only populated
+		// for top-level (ROOT-child) nodes — see assignTopLevelBrailleRanges() and
+		// the ROOT case of to_latex().
+		this.brailleRange = null;
+		this.latexRange = null;
 		this.reset_latex();
 	}
 
@@ -220,7 +280,10 @@ class Element {
 			case tokens.ROOT:
 				for (const child of this.children) {
 					try {
-						this.add_latex(await child.to_latex(table, translate));
+						const startLen = this.latex.length;
+						const childLatex = await child.to_latex(table, translate);
+						this.add_latex(childLatex);
+						child.latexRange = { start: startLen, end: startLen + childLatex.length };
 					} catch (error) {
 						console.error('[processFile] Error processing ROOT child:', error.message, 'token:', child.token);
 						// Continue processing remaining children
@@ -339,11 +402,29 @@ export async function parseWithTranslator(text, table = defaultTable, translate)
 	return await parseTree.to_latex(table, translate);
 }
 
+// Top-level (ROOT-child) node ranges only — the granularity DualDocument's
+// paragraph/equation-level sync operates at. paragraphs[i] is an exact contiguous
+// substring of normalizedText (split('\n\n') loses nothing at this level, unlike
+// the word-rejoining lower in the tree), so these offsets are exact, not
+// approximate.
+function assignTopLevelBrailleRanges(root, normalizedText) {
+	const paragraphs = normalizedText.split('\n\n');
+	let cursor = 0;
+	paragraphs.forEach((para, i) => {
+		const node = root.children[i];
+		if (node) {
+			node.brailleRange = { start: cursor, end: cursor + para.length };
+		}
+		cursor += para.length + 2; // '\n\n' separator
+	});
+}
+
 export function lex(text) {
 	if (typeof text !== 'string') throw new Error('Input must be a string');
 
 	text = text.replace(/(\r\n|\n|\r)/g, '\n');
-	
+	elementIdCounter = 0;
+
 	const parseTree = new Element(tokens.ROOT);
 
 	const paragraphs = text.split('\n\n');
@@ -431,6 +512,11 @@ export function lex(text) {
 								currentToken = currentToken.push(tokens.NEMETH);
 								i++;
 								continue;
+							case tokenStrings.NEMETHSTOP:
+								// A NEMETH block opened mid-word/mid-line (via NEMETHSTART above) closes here 
+								if (currentToken.token === tokens.NEMETH) currentToken = currentToken.parent;
+								i++;
+								continue;
 							case tokenStrings.BOLD:
 								if (currentToken.token === tokens.BOLD) currentToken = currentToken.parent;
 								else currentToken = currentToken.push(tokens.BOLD);
@@ -477,6 +563,9 @@ export function lex(text) {
 
 		paraNode.check_for_equation();
 	});
+
+	assignTopLevelBrailleRanges(parseTree, text);
+	parseTree.sourceText = text; // normalized (\n-only) — ranges above are relative to this, not the raw input
 
 	return parseTree;
 }

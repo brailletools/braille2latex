@@ -36,6 +36,6 @@
     "globals": "^16.0.0"
   },
   "dependencies": {
-    "@brailletools/liblouis-env": "github:brailletools/liblouis-env#path:/js/packages/node"
+    "@brailletools/liblouis-env": "github:brailletools/liblouis-env#v0.1.1&path:/js/packages/node"
   }
 }

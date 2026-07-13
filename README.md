@@ -58,6 +58,52 @@ Convert between ASCII Braille notation and Unicode Braille characters.
 
 Convert a line of Nemeth Braille (ASCII or Unicode) to a LaTeX math string.
 
+### `latex_to_nemeth(str, options?)`
+
+The reverse of `nemeth_to_latex()`: converts a LaTeX math expression (no surrounding
+`$`/`$$` delimiters) to Nemeth Braille (ASCII). Unlike `nemeth_to_latex()`, this does
+**not** tolerate incomplete/unbalanced LaTeX and does **not** fall back to passing
+input through unchanged — it throws on invalid input, so callers can distinguish "no
+translation available" from "here's a (possibly wrong) result." `options` is
+forwarded to the underlying Abraham parser (e.g. `operatorNames`).
+
+Forward-translates print text to Braille-ASCII using the liblouis WASM backend
+configured via `configure()` — the mirror of `parse()`'s back-translation direction.
+Requires `configure()` to have been called first, same as `parse()`. If you need
+Unicode braille glyphs, pass the result through `ascii2Braille()`.
+### `DualDocument`
+
+A canonical braille⟷LaTeX document model for building a side-by-side editor where
+both representations are directly editable and stay in sync at paragraph/equation
+granularity (not full-document, not character-by-character). Wraps the same `lex()`/
+`to_latex()` tree used by `parse()`.
+
+```js
+import { DualDocument } from '@brailletools/braille2latex';
+
+const doc = await DualDocument.fromBraille(brfText, { table: 'en-ueb-g2.ctb' });
+doc.brailleText; // current braille source
+doc.latexText;   // current generated LaTeX
+
+// Apply an edit made in the braille pane (full new value + caret offset):
+const { latexText, latexCursor } = await doc.applyBrailleEdit(newBrailleText, cursorOffset);
+
+// Apply an edit made in the LaTeX pane:
+const { brailleText, brailleCursor, nodeError } = await doc.applyLatexEdit(newLatexText, cursorOffset);
+
+// Nodes currently out of sync (translation failed for that paragraph/equation):
+doc.errors; // [{ nodeId, pane, label, range, message }, ...]
+```
+
+Both `applyBrailleEdit`/`applyLatexEdit` only re-derive the top-level node(s)
+(paragraph or equation) actually touched by the edit, splice the result into the
+existing text, and return a best-effort proportional cursor position for the other
+pane. On a LaTeX-side translation failure (bad syntax, or an edit spanning more than
+one paragraph/equation — there's no LaTeX lexer to rediscover new boundaries), the
+braille pane is left untouched and the affected node appears in `doc.errors` instead.
+`fromBraille()` accepts the same `translate`/`translateForward` override hooks as
+`parseWithTranslator()`, for testing without a live liblouis worker.
+
 ---
 
 ## Usage in SvelteKit / browser
