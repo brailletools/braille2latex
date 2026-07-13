@@ -298,9 +298,7 @@ export class DualDocument {
 
 		if (firstIdx !== lastIdx) {
 			// Edit spans multiple top-level nodes: not resolvable at node granularity
-			// (no LaTeX lexer to rediscover new boundaries). Flag every spanned node;
-			// their ranges go stale until a subsequent edit narrows back to a single
-			// node, which is an accepted rough edge for this rare case (see plan §7).
+			// (no LaTeX lexer to rediscover new boundaries). Flag every spanned node.
 			const message =
 				'Edit spans multiple paragraphs/equations — narrow the edit to a single paragraph or equation to sync.';
 			for (let i = firstIdx; i <= lastIdx; i++) {
@@ -308,7 +306,17 @@ export class DualDocument {
 				nodes[i].errorPane = 'latex';
 				nodes[i].errorMessage = message;
 			}
-			this._tree.latex = newLatexText;
+
+			// Keep internal latex ranges monotonic/contiguous so future offset lookups
+			// don't operate on stale positions. Since we can't re-lex LaTeX here, assign
+			// the entire length delta to the last spanned node.
+			const delta = newLatexText.length - oldLatexText.length;
+			const last = nodes[lastIdx];
+			last.latexRange = {
+				start: last.latexRange.start,
+				end: Math.max(last.latexRange.start, last.latexRange.end + delta)
+			};
+			this._recomputeRanges(this.brailleText, newLatexText);
 			return {
 				brailleText: this.brailleText,
 				brailleCursor: this._mapCursor('latexRange', 'brailleRange', cursorOffset),
@@ -381,6 +389,9 @@ export class DualDocument {
 		replacement.status = 'ok';
 		replacement.errorPane = null;
 		replacement.errorMessage = null;
+		// Keep latex ranges consistent with the user-edited LaTeX pane (newLatexText),
+		// not the regenerated latex (subtree.latex), which may normalize whitespace/markup.
+		replacement.latexRange = { start: 0, end: latexSlice.length };
 		nodes[firstIdx] = replacement;
 
 		this._recomputeRanges(newBrailleText, newLatexText);

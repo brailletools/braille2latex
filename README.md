@@ -67,12 +67,10 @@ input through unchanged — it throws on invalid input, so callers can distingui
 translation available" from "here's a (possibly wrong) result." `options` is
 forwarded to the underlying Abraham parser (e.g. `operatorNames`).
 
-### `translateForward(text, table?)`
-
-Forward-translates print text to Unicode Braille using the liblouis WASM backend
+Forward-translates print text to Braille-ASCII using the liblouis WASM backend
 configured via `configure()` — the mirror of `parse()`'s back-translation direction.
-Requires `configure()` to have been called first, same as `parse()`.
-
+Requires `configure()` to have been called first, same as `parse()`. If you need
+Unicode braille glyphs, pass the result through `ascii2Braille()`.
 ### `DualDocument`
 
 A canonical braille⟷LaTeX document model for building a side-by-side editor where
