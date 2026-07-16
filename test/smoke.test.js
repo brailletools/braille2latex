@@ -85,6 +85,24 @@ test('lex() closes a NEMETH block opened mid-line via the word-based branch', ()
 	);
 });
 
+test('lex() inserts a space at a line wrap within a paragraph instead of fusing words', () => {
+	// Regression test: a single '\n' inside a paragraph (as opposed to the '\n\n'
+	// that marks an actual paragraph break) is a line wrap -- e.g. one line per
+	// row of OCR-detected braille cells. Previously the wrap contributed no
+	// separator at all, so "require\nwaiting" rendered as "requirewaiting".
+	const tree = lex('require\nwaiting');
+	const para = tree.children[0];
+	assert.equal(para.children.length, 1);
+	assert.equal(para.children[0].value, 'require waiting');
+
+	// A real paragraph break (blank line) must still NOT gain an extra space --
+	// that boundary already becomes a new PARA, not a joined run.
+	const tree2 = lex('first para\n\nsecond para');
+	assert.equal(tree2.children.length, 2);
+	assert.equal(tree2.children[0].children[0].value, 'first para');
+	assert.equal(tree2.children[1].children[0].value, 'second para');
+});
+
 test('lex() does not drop a single-character word after the first word/run in a paragraph', () => {
 	// Regression test for braille2latex#20: a single-character word (e.g. "a")
 	// occurring anywhere after the first word/run used to get nested as a *child*

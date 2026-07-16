@@ -669,9 +669,22 @@ export function lex(text) {
 				}
 			}
 			
-			// Add newline after each line within NEMETH blocks (but not after last line)
-			if (lineIndex < lines.length - 1 && currentToken.token === tokens.NEMETH) {
-				currentToken.add_character('\n');
+			// A single '\n' inside a paragraph is a line wrap, not a paragraph break
+			// (that's '\n\n', split out above) -- it still stands for whitespace between
+			// the last word of this line and the first word of the next, or the last
+			// word of one line and the last word of the next line fuse together with
+			// no separator at all. NEMETH content preserves the literal newline instead
+			// (verbatim rendering of Nemeth math); everything else gets a space.
+			if (lineIndex < lines.length - 1) {
+				if (currentToken.token === tokens.NEMETH) {
+					currentToken.add_character('\n');
+				} else if (
+					currentToken.token === tokens.STRING ||
+					currentToken.token === tokens.BOLD ||
+					currentToken.token === tokens.ITALIC
+				) {
+					currentToken.add_character(' ');
+				}
 			}
 		});
 
