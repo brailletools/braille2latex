@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DualDocument } from '../src/index.js';
+import { DualDocument, ascii2Braille } from '../src/index.js';
 
 // Identity stand-ins for liblouis, matching smoke.test.js's convention — these test
 // the sync/splicing/range mechanics, not real braille orthography. Real liblouis
@@ -123,6 +123,152 @@ test('applyLatexEdit forward-translates a prose paragraph via an injected transl
 	assert.equal(result.nodeError, null);
 	assert.ok(result.brailleText.length > 0);
 	assert.equal(doc.errors.length, 0);
+});
+
+test('applyLatexEdit on a PARA with markup preserves an untouched sibling child\'s braille verbatim (braille2latex#19)', async () => {
+	// Non-identity translateForward, tracking every call it receives: the existing
+	// identityTranslateForward can't distinguish "preserved" from "regenerated-
+	// identically" since it just echoes its input back unchanged.
+	const forwardCalls = [];
+	const trackingTranslateForward = async (text) => {
+		forwardCalls.push(text);
+		return text + 'X';
+	};
+
+	const doc = await DualDocument.fromBraille('_.CAN_. DOG', {
+		translate: identityTranslate,
+		translateForward: trackingTranslateForward
+	});
+	const para = doc.topLevelNodes[0];
+	assert.equal(para.token, 'PARA');
+	assert.equal(para.childRangesReliable, true, 'sanity check: this fixture must hit the new splice path');
+	const [bold, string] = para.children;
+	assert.equal(bold.token, 'BOLD');
+	assert.equal(string.token, 'STRING');
+
+	// Edit entirely inside the STRING("DOG") child's latex range, nowhere near BOLD.
+	const oldLatex = doc.latexText;
+	const insertAt = string.latexRange.end;
+	const newLatex = oldLatex.slice(0, insertAt) + 'Z' + oldLatex.slice(insertAt);
+
+	const result = await doc.applyLatexEdit(newLatex, insertAt + 1);
+
+	assert.equal(result.nodeError, null);
+	// The BOLD("CAN") child's raw braille bytes must be byte-identical to before —
+	// proof it was preserved verbatim, not silently re-forward-translated.
+	assert.equal(result.brailleText.startsWith('_.CAN_.'), true);
+	// Forward translation must never even be *called* with the untouched BOLD
+	// child's content — a stronger check than just inspecting the final output.
+	assert.equal(forwardCalls.length, 1);
+	assert.equal(forwardCalls[0].includes(ascii2Braille('CAN')), false);
+});
+
+test('applyLatexEdit deletes a whole Nemeth segment atomically, leaving no orphaned marker or touching the sibling STRING', async () => {
+	// Reuses the existing mixed-prose+equation fixture ('C\n_%ax = b_:', a PARA
+	// with STRING + NEMETH siblings — see the test below). Deleting the entire
+	// math segment must not leave a dangling "_%"/"_:" half of a contraction/
+	// block marker, and must not touch the untouched STRING("C") sibling.
+	const doc = await makeDoc('C\n_%ax = b_:');
+	const para = doc.topLevelNodes[0];
+	assert.equal(para.childRangesReliable, true, 'sanity check: this fixture must hit the new splice path');
+	const [stringChild, nemethChild] = para.children;
+	assert.equal(stringChild.token, 'STRING');
+	assert.equal(nemethChild.token, 'NEMETH');
+
+	const oldLatex = doc.latexText;
+	const newLatex = oldLatex.slice(0, nemethChild.latexRange.start) + oldLatex.slice(nemethChild.latexRange.end);
+
+	const result = await doc.applyLatexEdit(newLatex, nemethChild.latexRange.start);
+
+	assert.equal(result.nodeError, null);
+	assert.doesNotMatch(result.brailleText, /_%/, 'no orphaned Nemeth-open marker after deleting the whole math segment');
+	assert.doesNotMatch(result.brailleText, /_:/, 'no orphaned Nemeth-close marker after deleting the whole math segment');
+	assert.match(result.brailleText, /^C/, 'STRING sibling\'s braille must be untouched by the deletion');
+});
+
+test('applyLatexEdit falls back to whole-node regeneration when childRangesReliable is false, without corrupting anything', async () => {
+	// 'abc_.bold_.' hits a separate, pre-existing lexer quirk (a BOLD marker
+	// landing directly against a word with no space nests it under the STRING
+	// node instead of as a PARA sibling), which the marker-only scanner can't
+	// predict — see the equivalent lex()-level test in smoke.test.js. This proves
+	// the *edit* path degrades safely too, not just the scan/flag itself.
+	const doc = await makeDoc('abc_.bold_.');
+	const para = doc.topLevelNodes[0];
+	assert.equal(para.token, 'PARA');
+	assert.equal(para.childRangesReliable, false, 'sanity check: this fixture must hit the fallback path');
+
+	const oldLatex = doc.latexText;
+	const newLatex = oldLatex + ' MORE';
+	const result = await doc.applyLatexEdit(newLatex, newLatex.length);
+
+	assert.equal(result.nodeError, null);
+	assert.ok(result.brailleText.length > 0);
+	assert.equal(doc.errors.length, 0);
+});
+
+test('applyLatexEdit on an empty paragraph (zero children) falls back to whole-node regeneration instead of crashing (braille2latex#21)', async () => {
+	// 'HELLO\n\n\n\nWORLD' has a blank line between two paragraphs, which
+	// split('\n\n') turns into a middle PARA with no children at all.
+	// assignParaChildBrailleRanges() must not call that "reliable" just
+	// because spans.length === children.length === 0 -- the old vacuous
+	// match crashed applyLatexEdit's splice path (children[-1] access) the
+	// first time an edit landed in such a paragraph.
+	const doc = await makeDoc('HELLO\n\n\n\nWORLD');
+	assert.equal(doc.topLevelNodes.length, 3);
+	const empty = doc.topLevelNodes[1];
+	assert.equal(empty.children.length, 0);
+	assert.equal(empty.childRangesReliable, false, 'an empty paragraph must never be flagged reliable');
+
+	const oldLatex = doc.latexText;
+	const insertAt = empty.latexRange.start;
+	const newLatex = oldLatex.slice(0, insertAt) + 'X' + oldLatex.slice(insertAt);
+	const result = await doc.applyLatexEdit(newLatex, insertAt + 1);
+
+	assert.equal(result.nodeError, null);
+	assert.equal(doc.errors.length, 0);
+	assert.match(result.brailleText, /X/, 'the inserted character must appear somewhere in the regenerated braille');
+});
+
+test('applyLatexEdit falls back to whole-node regeneration when the edit lands in PARA-level glue outside every child\'s range (braille2latex#21)', async () => {
+	// Same '_.CAN_. DOG' fixture as the braille2latex#19 splice test above, but
+	// the edit lands past the last child's own latexRange -- in the trailing
+	// "\n\n" the PARA case of to_latex() appends *after* stamping children's
+	// ranges (see processFile.js's PARA case). findOwningIndex has no
+	// "out of range" signal, so without the bounds check it would silently
+	// attribute this edit to the DOG child and splice, even though
+	// childRangesReliable is true (unlike the previous test).
+	const forwardCalls = [];
+	const trackingTranslateForward = async (text) => {
+		forwardCalls.push(text);
+		return text + 'X';
+	};
+
+	const doc = await DualDocument.fromBraille('_.CAN_. DOG', {
+		translate: identityTranslate,
+		translateForward: trackingTranslateForward
+	});
+	const para = doc.topLevelNodes[0];
+	assert.equal(para.childRangesReliable, true, 'sanity check: children ARE reliable here, unlike the empty-paragraph case');
+	const [, string] = para.children;
+	assert.equal(string.token, 'STRING');
+
+	const oldLatex = doc.latexText;
+	// One character before the very end of the node's latex range: inside the
+	// trailing "\n\n" glue, past string.latexRange.end.
+	const insertAt = para.latexRange.end - 1;
+	assert.ok(insertAt > string.latexRange.end, 'sanity check: the insert point must be outside every child\'s range');
+	const newLatex = oldLatex.slice(0, insertAt) + 'Z' + oldLatex.slice(insertAt);
+
+	const result = await doc.applyLatexEdit(newLatex, insertAt + 1);
+
+	assert.equal(result.nodeError, null);
+	// Forward translation being called with the BOLD("CAN") content proves the
+	// whole node was regenerated, not just spliced around the DOG child --
+	// the opposite of the braille2latex#19 test's assertion above.
+	assert.ok(
+		forwardCalls.some(call => call.includes(ascii2Braille('CAN'))),
+		'falling back to whole-node regen must re-translate the earlier BOLD child too, not just DOG'
+	);
 });
 
 test('applyLatexEdit on a mixed prose+equation paragraph translates each segment through the right pipeline', async () => {

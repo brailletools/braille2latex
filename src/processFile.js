@@ -198,6 +198,12 @@ class Element {
 		// the ROOT case of to_latex().
 		this.brailleRange = null;
 		this.latexRange = null;
+		// PARA nodes only: true once assignParaChildBrailleRanges() has verified its
+		// marker-only boundary scan exactly matches this node's real children (count
+		// + token-type-in-order), meaning every child's brailleRange above is safe to
+		// use for splicing. Left undefined (falsy) otherwise -- applyLatexEdit treats
+		// that as "fall back to regenerating the whole node," never guesses.
+		this.childRangesReliable = undefined;
 		this.reset_latex();
 	}
 
@@ -299,7 +305,12 @@ class Element {
 							// Ensure display math starts on its own line when it follows text
 							this.add_latex('\n\n');
 						}
+						// Node-relative (0-based at this PARA's own latex start), mirroring
+						// the ROOT case above one level down — see applyLatexEdit's use of
+						// this for splicing only the touched child(ren)'s braille.
+						const startLen = this.latex.length;
 						this.add_latex(childLatex);
+						child.latexRange = { start: startLen, end: startLen + childLatex.length };
 					} catch (error) {
 						console.error('[processFile] Error processing PARA child:', error.message, 'token:', child.token);
 						// Continue processing remaining children
@@ -419,6 +430,127 @@ function assignTopLevelBrailleRanges(root, normalizedText) {
 	});
 }
 
+// Maps each of the four structural markers lex() recognizes to the span type it
+// opens — 'nemeth'/'bold'/'italic' spans nest (a NEMETH, BOLD, or ITALIC region
+// can contain any of the others); plain content between/outside them is 'text'.
+const SPAN_TYPE_FOR_MARKER = {
+	[tokenStrings[tokens.BOLD]]: 'bold',
+	[tokenStrings[tokens.ITALIC]]: 'italic'
+};
+
+// A lightweight, marker-only scan of one paragraph's raw braille text, computing
+// the top-level (direct-PARA-child) span boundaries a correctly-formed input
+// would produce, WITHOUT re-running lex()'s word-splitting/character-loop logic.
+// Returns an ordered, gapless, non-overlapping partition of [0, rawParaText.length):
+// [{ type: 'text'|'nemeth'|'bold'|'italic', start, end }, ...].
+//
+// This mirrors lex()'s marker push/pop rules (verified by hand against the word-
+// and character-based branches there) closely enough to get well-formed input
+// right, but it is deliberately NOT a full reimplementation of the lexer (e.g. it
+// doesn't replicate every pre-existing lexer quirk around markers landing mid-word
+// with no surrounding space). That's fine: assignParaChildBrailleRanges() below
+// cross-checks this scan's output against the real parse tree and discards it on
+// any mismatch, so a wrong guess here only costs the fast path for that one
+// paragraph — see braille2latex#19.
+function computeTopLevelBrailleSpans(rawParaText) {
+	const spans = [];
+	const stack = []; // entries: 'nemeth' | 'bold' | 'italic', innermost last
+	let spanStart = 0;
+	let spanType = null; // null until the first character of the current span decides it
+
+	const closeSpanIfOpen = (end) => {
+		if (spanType !== null && end > spanStart) {
+			spans.push({ type: spanType, start: spanStart, end });
+		}
+		spanType = null;
+	};
+
+	let i = 0;
+	while (i < rawParaText.length) {
+		const two = rawParaText.substring(i, i + 2);
+
+		if (two === tokenStrings[tokens.NEMETHSTART]) {
+			if (stack.length === 0) {
+				closeSpanIfOpen(i);
+				spanStart = i;
+				spanType = 'nemeth';
+			}
+			stack.push('nemeth'); // always pushes, even nested inside another NEMETH
+			i += 2;
+			continue;
+		}
+
+		if (two === tokenStrings[tokens.NEMETHSTOP]) {
+			if (stack[stack.length - 1] === 'nemeth') stack.pop(); // else: stray marker, no-op
+			i += 2;
+			if (stack.length === 0) closeSpanIfOpen(i);
+			continue;
+		}
+
+		const markerType = SPAN_TYPE_FOR_MARKER[two];
+		if (markerType) {
+			if (stack.length === 0) {
+				closeSpanIfOpen(i);
+				spanStart = i;
+				spanType = markerType;
+			}
+			// Toggle relative to the *immediate* top of stack only, matching lex()'s
+			// `currentToken.token === BOLD ? parent : push(BOLD)` (not a deep search).
+			if (stack[stack.length - 1] === markerType) {
+				stack.pop();
+			} else {
+				stack.push(markerType);
+			}
+			i += 2;
+			if (stack.length === 0) closeSpanIfOpen(i);
+			continue;
+		}
+
+		// Plain character — starts a new top-level 'text' span if one isn't already open.
+		if (stack.length === 0 && spanType === null) {
+			spanStart = i;
+			spanType = 'text';
+		}
+		i += 1;
+	}
+	closeSpanIfOpen(rawParaText.length);
+
+	return spans;
+}
+
+const TOKEN_FOR_SPAN_TYPE = {
+	text: tokens.STRING,
+	nemeth: tokens.NEMETH,
+	bold: tokens.BOLD,
+	italic: tokens.ITALIC
+};
+
+// Runs computeTopLevelBrailleSpans() and cross-checks it against paraNode's real
+// children (count + token-type-in-order) before trusting it for anything. On a
+// match, stamps each child's brailleRange from the scan and marks the node
+// childRangesReliable; on any mismatch, leaves children's brailleRange untouched
+// (null) and childRangesReliable false, so applyLatexEdit's PARA branch falls back
+// to regenerating the whole node rather than guessing at a wrong splice point.
+function assignParaChildBrailleRanges(paraNode, paraRawText) {
+	const spans = computeTopLevelBrailleSpans(paraRawText);
+	const children = paraNode.children;
+
+	const matches =
+		children.length > 0 &&
+		spans.length === children.length &&
+		spans.every((span, i) => TOKEN_FOR_SPAN_TYPE[span.type] === children[i].token);
+
+	if (!matches) {
+		paraNode.childRangesReliable = false;
+		return;
+	}
+
+	spans.forEach((span, i) => {
+		children[i].brailleRange = { start: span.start, end: span.end };
+	});
+	paraNode.childRangesReliable = true;
+}
+
 export function lex(text) {
 	if (typeof text !== 'string') throw new Error('Input must be a string');
 
@@ -466,23 +598,6 @@ export function lex(text) {
 				const words = line.split(' ').filter(Boolean);
 				words.forEach((word) => {
 					if (!word) return;
-
-					if (word.length === 1) {
-						switch (currentToken.token) {
-							case tokens.NEMETH:
-							case tokens.BOLD:
-							case tokens.ITALIC:
-								currentToken.add_character(word);
-								return;
-							default:
-								{
-									const stringToken = currentToken.push(tokens.STRING);
-									stringToken.add_character(word);
-									stringToken.add_character(' ');
-								}
-								return;
-						}
-					}
 
 					let needsStringToken = false;
 					if (currentToken.token === tokens.PARA) {
@@ -555,13 +670,27 @@ export function lex(text) {
 				}
 			}
 			
-			// Add newline after each line within NEMETH blocks (but not after last line)
-			if (lineIndex < lines.length - 1 && currentToken.token === tokens.NEMETH) {
-				currentToken.add_character('\n');
+			// A single '\n' inside a paragraph is a line wrap, not a paragraph break
+			// (that's '\n\n', split out above) -- it still stands for whitespace between
+			// the last word of this line and the first word of the next, or the last
+			// word of one line and the last word of the next line fuse together with
+			// no separator at all. NEMETH content preserves the literal newline instead
+			// (verbatim rendering of Nemeth math); everything else gets a space.
+			if (lineIndex < lines.length - 1) {
+				if (currentToken.token === tokens.NEMETH) {
+					currentToken.add_character('\n');
+				} else if (
+					currentToken.token === tokens.STRING ||
+					currentToken.token === tokens.BOLD ||
+					currentToken.token === tokens.ITALIC
+				) {
+					currentToken.add_character(' ');
+				}
 			}
 		});
 
 		paraNode.check_for_equation();
+		assignParaChildBrailleRanges(paraNode, para);
 	});
 
 	assignTopLevelBrailleRanges(parseTree, text);
