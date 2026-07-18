@@ -206,6 +206,71 @@ test('applyLatexEdit falls back to whole-node regeneration when childRangesRelia
 	assert.equal(doc.errors.length, 0);
 });
 
+test('applyLatexEdit on an empty paragraph (zero children) falls back to whole-node regeneration instead of crashing (braille2latex#21)', async () => {
+	// 'HELLO\n\n\n\nWORLD' has a blank line between two paragraphs, which
+	// split('\n\n') turns into a middle PARA with no children at all.
+	// assignParaChildBrailleRanges() must not call that "reliable" just
+	// because spans.length === children.length === 0 -- the old vacuous
+	// match crashed applyLatexEdit's splice path (children[-1] access) the
+	// first time an edit landed in such a paragraph.
+	const doc = await makeDoc('HELLO\n\n\n\nWORLD');
+	assert.equal(doc.topLevelNodes.length, 3);
+	const empty = doc.topLevelNodes[1];
+	assert.equal(empty.children.length, 0);
+	assert.equal(empty.childRangesReliable, false, 'an empty paragraph must never be flagged reliable');
+
+	const oldLatex = doc.latexText;
+	const insertAt = empty.latexRange.start;
+	const newLatex = oldLatex.slice(0, insertAt) + 'X' + oldLatex.slice(insertAt);
+	const result = await doc.applyLatexEdit(newLatex, insertAt + 1);
+
+	assert.equal(result.nodeError, null);
+	assert.equal(doc.errors.length, 0);
+	assert.match(result.brailleText, /X/, 'the inserted character must appear somewhere in the regenerated braille');
+});
+
+test('applyLatexEdit falls back to whole-node regeneration when the edit lands in PARA-level glue outside every child\'s range (braille2latex#21)', async () => {
+	// Same '_.CAN_. DOG' fixture as the braille2latex#19 splice test above, but
+	// the edit lands past the last child's own latexRange -- in the trailing
+	// "\n\n" the PARA case of to_latex() appends *after* stamping children's
+	// ranges (see processFile.js's PARA case). findOwningIndex has no
+	// "out of range" signal, so without the bounds check it would silently
+	// attribute this edit to the DOG child and splice, even though
+	// childRangesReliable is true (unlike the previous test).
+	const forwardCalls = [];
+	const trackingTranslateForward = async (text) => {
+		forwardCalls.push(text);
+		return text + 'X';
+	};
+
+	const doc = await DualDocument.fromBraille('_.CAN_. DOG', {
+		translate: identityTranslate,
+		translateForward: trackingTranslateForward
+	});
+	const para = doc.topLevelNodes[0];
+	assert.equal(para.childRangesReliable, true, 'sanity check: children ARE reliable here, unlike the empty-paragraph case');
+	const [, string] = para.children;
+	assert.equal(string.token, 'STRING');
+
+	const oldLatex = doc.latexText;
+	// One character before the very end of the node's latex range: inside the
+	// trailing "\n\n" glue, past string.latexRange.end.
+	const insertAt = para.latexRange.end - 1;
+	assert.ok(insertAt > string.latexRange.end, 'sanity check: the insert point must be outside every child\'s range');
+	const newLatex = oldLatex.slice(0, insertAt) + 'Z' + oldLatex.slice(insertAt);
+
+	const result = await doc.applyLatexEdit(newLatex, insertAt + 1);
+
+	assert.equal(result.nodeError, null);
+	// Forward translation being called with the BOLD("CAN") content proves the
+	// whole node was regenerated, not just spliced around the DOG child --
+	// the opposite of the braille2latex#19 test's assertion above.
+	assert.ok(
+		forwardCalls.some(call => call.includes(ascii2Braille('CAN'))),
+		'falling back to whole-node regen must re-translate the earlier BOLD child too, not just DOG'
+	);
+});
+
 test('applyLatexEdit on a mixed prose+equation paragraph translates each segment through the right pipeline', async () => {
 	// A word followed by inline math on the same line ("C\n_%ax = b_:") produces a
 	// single PARA node with STRING + NEMETH siblings, NOT a pure EQUATION node —
