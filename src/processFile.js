@@ -536,6 +536,7 @@ function assignParaChildBrailleRanges(paraNode, paraRawText) {
 	const children = paraNode.children;
 
 	const matches =
+		children.length > 0 &&
 		spans.length === children.length &&
 		spans.every((span, i) => TOKEN_FOR_SPAN_TYPE[span.type] === children[i].token);
 

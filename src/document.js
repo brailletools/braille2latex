@@ -366,45 +366,63 @@ export class DualDocument {
 			if (node.token === tokens.EQUATION) {
 				const mathBody = extractMathBody(latexSlice);
 				newBrailleForNode = '_%' + latex_to_nemeth(mathBody) + '_:';
-			} else if (node.childRangesReliable === true) {
-				// Only forward-translate the actually-changed sub-range and splice it
-				// into the node's existing (untouched) braille, instead of regenerating
-				// the whole paragraph — see braille2latex#19. node.latex and latexSlice
-				// are both node-relative (0-based at this node's own latex start), same
-				// coordinate space assignParaChildBrailleRanges() stamped children's
+			} else {
+				// node.latex and latexSlice are both node-relative (0-based at this
+				// node's own latex start), same coordinate space
+				// assignParaChildBrailleRanges() stamped children's
 				// latexRange/brailleRange in, so this diff needs no extra offset math
 				// beyond what the document-level diff above already did.
-				const forward = this._translateForward || defaultTranslateForward;
+				const children = node.children;
 				const { prefixLen: childPrefixLen, suffixLen: childSuffixLen } = diffRegion(node.latex, latexSlice);
 				const oldChildRegionStart = childPrefixLen;
 				const oldChildRegionEnd = node.latex.length - childSuffixLen;
 
-				const children = node.children;
-				const childFirstIdx = findOwningIndex(children, 'latexRange', oldChildRegionStart);
-				const childLastIdx =
-					oldChildRegionEnd > oldChildRegionStart
-						? findOwningIndex(children, 'latexRange', oldChildRegionEnd - 1)
-						: childFirstIdx;
+				// children only cover their own span text, not PARA-level glue outside
+				// it (e.g. the trailing "\n\n" to_latex() appends, or display-math
+				// spacing) -- unlike top-level nodes, whose ranges are extended by
+				// findOwningIndex's "gap belongs to preceding node" convention. Splicing
+				// is only safe when the edited region is actually inside the span the
+				// children cover; otherwise findOwningIndex would silently clamp an
+				// out-of-range offset onto the nearest child and corrupt it.
+				const canSplice =
+					node.childRangesReliable === true &&
+					children.length > 0 &&
+					oldChildRegionStart >= children[0].latexRange.start &&
+					oldChildRegionEnd <= children[children.length - 1].latexRange.end;
 
-				const childRegionStart = children[childFirstIdx].latexRange.start;
-				const childRegionNewEnd = children[childLastIdx].latexRange.end + delta;
-				const newChildRegionLatex = latexSlice.slice(childRegionStart, childRegionNewEnd);
+				if (canSplice) {
+					// Only forward-translate the actually-changed sub-range and splice it
+					// into the node's existing (untouched) braille, instead of regenerating
+					// the whole paragraph — see braille2latex#19.
+					const forward = this._translateForward || defaultTranslateForward;
+					const childFirstIdx = findOwningIndex(children, 'latexRange', oldChildRegionStart);
+					const childLastIdx =
+						oldChildRegionEnd > oldChildRegionStart
+							? findOwningIndex(children, 'latexRange', oldChildRegionEnd - 1)
+							: childFirstIdx;
 
-				const newBrailleForChildRegion = await regenerateParaBraille(newChildRegionLatex, this.table, forward);
+					const childRegionStart = children[childFirstIdx].latexRange.start;
+					const childRegionNewEnd = children[childLastIdx].latexRange.end + delta;
+					const newChildRegionLatex = latexSlice.slice(childRegionStart, childRegionNewEnd);
 
-				const oldNodeBrailleText = this.brailleText.slice(node.brailleRange.start, node.brailleRange.end);
-				const childBrailleStart = children[childFirstIdx].brailleRange.start;
-				const childBrailleOldEnd = children[childLastIdx].brailleRange.end;
-				newBrailleForNode =
-					oldNodeBrailleText.slice(0, childBrailleStart) +
-					newBrailleForChildRegion +
-					oldNodeBrailleText.slice(childBrailleOldEnd);
-			} else {
-				// No reliable child ranges for this node (e.g. a lexer edge case the
-				// marker-only scan in processFile.js doesn't cover) — fall back to
-				// regenerating the whole node, same as before braille2latex#19's fix.
-				const forward = this._translateForward || defaultTranslateForward;
-				newBrailleForNode = await regenerateParaBraille(latexSlice, this.table, forward);
+					const newBrailleForChildRegion = await regenerateParaBraille(newChildRegionLatex, this.table, forward);
+
+					const oldNodeBrailleText = this.brailleText.slice(node.brailleRange.start, node.brailleRange.end);
+					const childBrailleStart = children[childFirstIdx].brailleRange.start;
+					const childBrailleOldEnd = children[childLastIdx].brailleRange.end;
+					newBrailleForNode =
+						oldNodeBrailleText.slice(0, childBrailleStart) +
+						newBrailleForChildRegion +
+						oldNodeBrailleText.slice(childBrailleOldEnd);
+				} else {
+					// No reliable child ranges for this node (e.g. a lexer edge case the
+					// marker-only scan in processFile.js doesn't cover), no children at
+					// all (empty paragraph), or the edited region falls outside every
+					// child's actual latex coverage -- fall back to regenerating the
+					// whole node, same as before braille2latex#19's fix.
+					const forward = this._translateForward || defaultTranslateForward;
+					newBrailleForNode = await regenerateParaBraille(latexSlice, this.table, forward);
+				}
 			}
 		} catch (error) {
 			node.status = 'error';
