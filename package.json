@@ -1,7 +1,7 @@
 {
   "name": "@brailletools/braille2latex",
   "version": "0.2.0",
-  "description": "Braille to LaTeX converter supporting Nemeth math notation",
+  "description": "Braille to LaTeX/Markdown converter (and, via Pandoc, any other format) supporting Nemeth math notation",
   "type": "module",
   "exports": {
     ".": "./src/index.js"
@@ -36,6 +36,7 @@
     "globals": "^16.0.0"
   },
   "dependencies": {
-    "@brailletools/liblouis-env": "github:brailletools/liblouis-env#v0.1.1&path:/js/packages/node"
+    "@brailletools/liblouis-env": "github:brailletools/liblouis-env#v0.1.1&path:/js/packages/node",
+    "pandoc-wasm": "^1.1.0"
   }
 }

@@ -11,6 +11,9 @@ importers:
       '@brailletools/liblouis-env':
         specifier: github:brailletools/liblouis-env#v0.1.1&path:/js/packages/node
         version: https://codeload.github.com/brailletools/liblouis-env/tar.gz/b7de53e203eec2c59b42f3236636da0a4e2bf48a#path:/js/packages/node
+      pandoc-wasm:
+        specifier: ^1.1.0
+        version: 1.1.0
     devDependencies:
       '@eslint/js':
         specifier: ^9.0.0
@@ -23,6 +26,9 @@ importers:
         version: 16.5.0
 
 packages:
+
+  '@bjorn3/browser_wasi_shim@0.4.2':
+    resolution: {integrity: sha512-/iHkCVUG3VbcbmEHn5iIUpIrh7a7WPiwZ3sHy4HZKZzBdSadwdddYDZAII2zBvQYV0Lfi8naZngPCN7WPHI/hA==}
 
   '@brailletools/liblouis-env@https://codeload.github.com/brailletools/liblouis-env/tar.gz/b7de53e203eec2c59b42f3236636da0a4e2bf48a#path:/js/packages/node':
     resolution: {path: /js/packages/node, tarball: https://codeload.github.com/brailletools/liblouis-env/tar.gz/b7de53e203eec2c59b42f3236636da0a4e2bf48a}
@@ -314,6 +320,9 @@ packages:
     resolution: {integrity: sha512-LaNjtRWUBY++zB5nE/NwcaoMylSPk+S+ZHNB1TzdbMJMny6dynpAGt7X/tl/QYq3TIeE6nxHppbo2LGymrG5Pw==}
     engines: {node: '>=10'}
 
+  pandoc-wasm@1.1.0:
+    resolution: {integrity: sha512-IoWBsC/cbSZe71rcRtxXUxG+Auf8aGDHKYOQZA6OdwmUL2xdpQaqrSGhPa+6zfLdSar7cnyAmTWt6KU9n5kBjQ==}
+
   parent-module@1.0.1:
     resolution: {integrity: sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==}
     engines: {node: '>=6'}
@@ -375,6 +384,8 @@ packages:
     engines: {node: '>=10'}
 
 snapshots:
+
+  '@bjorn3/browser_wasi_shim@0.4.2': {}
 
   '@brailletools/liblouis-env@https://codeload.github.com/brailletools/liblouis-env/tar.gz/b7de53e203eec2c59b42f3236636da0a4e2bf48a#path:/js/packages/node':
     dependencies:
@@ -667,6 +678,10 @@ snapshots:
   p-locate@5.0.0:
     dependencies:
       p-limit: 3.1.0
+
+  pandoc-wasm@1.1.0:
+    dependencies:
+      '@bjorn3/browser_wasi_shim': 0.4.2
 
   parent-module@1.0.1:
     dependencies:
