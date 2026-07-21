@@ -103,7 +103,13 @@ async function translate(unicodeBraille, tbl) {
 			input: unicodeBraille,
 			encoding: 'utf8'
 		});
-		return result.trimEnd();
+		// Strip only a trailing newline (a CLI-output artifact on some platforms/
+		// builds) -- NOT all trailing whitespace. A trailing space can be
+		// meaningful content (e.g. the separator lex() stores at the end of a
+		// STRING node immediately preceding a BOLD/ITALIC/NEMETH span), and
+		// .trimEnd() was silently eating it, reopening the same missing-space bug
+		// that fixing lex() itself was meant to close.
+		return result.replace(/\r?\n+$/, '');
 	} catch {
 		return unicodeBraille;
 	}

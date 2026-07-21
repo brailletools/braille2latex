@@ -190,6 +190,59 @@ const tokenStrings = {
 	[tokens.ITALIC]: '_/'
 };
 
+// Single source of truth for marker behavior, shared by lex()'s NEMETH-content char
+// loop and its word-based char loop below, and by computeTopLevelBrailleSpans's
+// SPAN_TYPE_FOR_MARKER further down -- each of those previously kept its own
+// near-duplicate switch-case/table, which is exactly how BOLD/ITALIC drifted out of
+// sync with NEMETHSTART's "close an open STRING first" rule (see applyMarker()'s
+// doc comment) and caused bold/italic content to be silently dropped. NEMETHSTART/
+// NEMETHSTOP are an open/close pair (start always nests one level deeper, stop
+// always closes the nearest NEMETH); BOLD/ITALIC are toggles (close if already the
+// innermost open span, else open one).
+const MARKERS = {
+	[tokenStrings[tokens.NEMETHSTART]]: { kind: 'open', span: tokens.NEMETH },
+	[tokenStrings[tokens.NEMETHSTOP]]: { kind: 'close', span: tokens.NEMETH },
+	[tokenStrings[tokens.BOLD]]: { kind: 'toggle', span: tokens.BOLD },
+	[tokenStrings[tokens.ITALIC]]: { kind: 'toggle', span: tokens.ITALIC }
+};
+
+// Applies one marker's effect starting from `currentToken`, returning the new
+// current node. Any marker first closes an open STRING node -- previously only
+// NEMETHSTART did this ("Close STRING token if we're in one"), so a BOLD/ITALIC
+// marker appearing after any plain word in the same paragraph nested as a CHILD of
+// the already-open STRING instead of a PARA-level sibling. Element.to_latex()/
+// to_markdown()'s STRING case only ever renders `this.value` and never recurses
+// into `.children`, so that nested span was silently discarded rather than
+// rendered -- this symmetric rule is the actual fix, for every marker type,
+// present and future, not just a patch for BOLD/ITALIC specifically.
+function applyMarker(currentToken, marker) {
+	switch (marker.kind) {
+		case 'open':
+			// Always opens a new (possibly nested) span -- close STRING first.
+			if (currentToken.token === tokens.STRING) currentToken = currentToken.parent;
+			return currentToken.push(marker.span);
+		case 'close':
+			// Only closes a matching already-open span; a stray close marker with no
+			// matching open (e.g. "abc_:def" with no preceding "_%") is a no-op --
+			// currentToken can't be STRING here in well-formed input (an 'open'
+			// marker always closes STRING before opening, so by the time its matching
+			// 'close' arrives, currentToken is already the span, not STRING again),
+			// so STRING must NOT be closed for a stray marker that turns out not to
+			// match -- doing so would strand any further text in this word onto the
+			// PARA node's own (never-rendered) .value instead of the still-open STRING.
+			return currentToken.token === marker.span ? currentToken.parent : currentToken;
+		case 'toggle':
+			// Closes if currentToken is already this span (never STRING in that
+			// case, so no STRING-closing needed); otherwise opens a new one, which
+			// -- like 'open' above -- must close STRING first.
+			if (currentToken.token === marker.span) return currentToken.parent;
+			if (currentToken.token === tokens.STRING) currentToken = currentToken.parent;
+			return currentToken.push(marker.span);
+		default:
+			return currentToken;
+	}
+}
+
 class Element {
 	constructor(token, parent = null) {
 		this.id = elementIdCounter++;
@@ -531,13 +584,23 @@ function assignTopLevelBrailleRanges(root, normalizedText) {
 	});
 }
 
-// Maps each of the four structural markers lex() recognizes to the span type it
-// opens — 'nemeth'/'bold'/'italic' spans nest (a NEMETH, BOLD, or ITALIC region
-// can contain any of the others); plain content between/outside them is 'text'.
-const SPAN_TYPE_FOR_MARKER = {
-	[tokenStrings[tokens.BOLD]]: 'bold',
-	[tokenStrings[tokens.ITALIC]]: 'italic'
+// Maps each toggle-style marker (BOLD/ITALIC -- NEMETHSTART/STOP are handled
+// separately below via their own open/close pair, not through this map) to the
+// span type it opens — 'nemeth'/'bold'/'italic' spans nest (a NEMETH, BOLD, or
+// ITALIC region can contain any of the others); plain content between/outside
+// them is 'text'. Derived from the shared MARKERS table above rather than
+// hand-maintained separately -- see MARKERS's doc comment for why that
+// duplication was the root cause of a real bug.
+const SPAN_TYPE_STRING = {
+	[tokens.NEMETH]: 'nemeth',
+	[tokens.BOLD]: 'bold',
+	[tokens.ITALIC]: 'italic'
 };
+const SPAN_TYPE_FOR_MARKER = Object.fromEntries(
+	Object.entries(MARKERS)
+		.filter(([, marker]) => marker.kind === 'toggle')
+		.map(([markerText, marker]) => [markerText, SPAN_TYPE_STRING[marker.span]])
+);
 
 // A lightweight, marker-only scan of one paragraph's raw braille text, computing
 // the top-level (direct-PARA-child) span boundaries a correctly-formed input
@@ -652,6 +715,25 @@ function assignParaChildBrailleRanges(paraNode, paraRawText) {
 	paraNode.childRangesReliable = true;
 }
 
+// Future extension point: heading/list support. Real BANA (Braille Authority of
+// North America) *Braille Formats* conventions distinguish headings and lists by
+// LINE INDENTATION and blank-line context, not by inline character markers like
+// MARKERS above -- e.g. a centered heading is a blank line, then centered text,
+// then a blank line (3+ blank cells each side); cell-5/cell-7 headings are
+// recognized by their fixed indent depth; lists use paragraph-indent/runover-
+// indent pairs ("1-3" notation), with nested levels each adding 2 cells. That's a
+// block-level layout concern, orthogonal to the inline BOLD/ITALIC/NEMETH toggle
+// spans MARKERS models. The natural place to add it: a classification pass run on
+// each paragraph's raw lines *before* the word-based loop below -- measure
+// first-line indent vs. runover-line indent, classify as Paragraph/Heading(level)/
+// ListItem(level) via a small table (additive rows, not new special-cased
+// branches, mirroring how MARKERS keeps inline spans in one place) -- then hand
+// the paragraph's text (indentation stripped) to the existing loop below
+// unchanged for BOLD/ITALIC/NEMETH spans within it. Not yet implemented: new
+// HEADING/LISTITEM Element tokens, to_latex()/to_markdown()/fromMarkdown() cases,
+// and DualDocument sync/error-tracking support for them are real new feature
+// surface, deserving their own scoped plan once house-style indent depths are
+// confirmed against real transcribed files.
 export function lex(text) {
 	if (typeof text !== 'string') throw new Error('Input must be a string');
 
@@ -664,6 +746,15 @@ export function lex(text) {
 	paragraphs.forEach(para => {
 		const paraNode = parseTree.push(tokens.PARA);
 		let currentToken = paraNode;
+		// Deferred inter-word/inter-line separator: rather than appending a trailing
+		// space immediately (which, for a span that closes back to PARA, would land
+		// INSIDE that span's closing marker -- e.g. "\textbf{HELLO }world" instead of
+		// the correct "\textbf{HELLO} world"), the space is flushed at the start of
+		// whatever comes next, onto whichever node actually receives it. See the
+		// flush site below for the one deliberate case (two marker spans back-to-back
+		// with nothing but a separator between them) where there's no live node to
+		// receive it, and PARA's last child is used as a fallback instead.
+		let pendingSpace = false;
 
 		const lines = para.split('\n');
 		lines.forEach((line, lineIndex) => {
@@ -671,28 +762,13 @@ export function lex(text) {
 			if (currentToken.token === tokens.NEMETH) {
 				for (let i = 0; i < line.length; i++) {
 					const firsttwo = line.substring(i, i + 2);
-					switch (firsttwo) {
-						case tokenStrings.NEMETHSTART:
-							currentToken = currentToken.push(tokens.NEMETH);
-							i++;
-							continue;
-						case tokenStrings.NEMETHSTOP:
-							if (currentToken.token === tokens.NEMETH) currentToken = currentToken.parent;
-							i++;
-							continue;
-						case tokenStrings.BOLD:
-							if (currentToken.token === tokens.BOLD) currentToken = currentToken.parent;
-							else currentToken = currentToken.push(tokens.BOLD);
-							i++;
-							continue;
-						case tokenStrings.ITALIC:
-							if (currentToken.token === tokens.ITALIC) currentToken = currentToken.parent;
-							else currentToken = currentToken.push(tokens.ITALIC);
-							i++;
-							continue;
-						default:
-							currentToken.add_character(line[i]);
+					const marker = MARKERS[firsttwo];
+					if (marker) {
+						currentToken = applyMarker(currentToken, marker);
+						i++;
+						continue;
 					}
+					currentToken.add_character(line[i]);
 				}
 			} else {
 				// For non-NEMETH content, use word-based processing
@@ -700,92 +776,61 @@ export function lex(text) {
 				words.forEach((word) => {
 					if (!word) return;
 
-					let needsStringToken = false;
 					if (currentToken.token === tokens.PARA) {
 						const firsttwo = word.substring(0, 2);
-						if (
-							firsttwo !== tokenStrings.NEMETHSTART &&
-							firsttwo !== tokenStrings.NEMETHSTOP &&
-							firsttwo !== tokenStrings.BOLD &&
-							firsttwo !== tokenStrings.ITALIC
-						) {
-							needsStringToken = true;
-							// Only create a new STRING token if we're not already in one
-							if (currentToken.token !== tokens.STRING) {
-								currentToken = currentToken.push(tokens.STRING);
-							}
+						// Only create a new STRING token if this word isn't itself a
+						// marker, and we're not already in one
+						if (!MARKERS[firsttwo] && currentToken.token !== tokens.STRING) {
+							currentToken = currentToken.push(tokens.STRING);
 						}
+					}
+
+					// Flush the pending separator now, onto whatever node is about to
+					// receive this word's content: the still-open STRING/BOLD/ITALIC/
+					// NEMETH from a continuing run (e.g. a single-character word mid-
+					// bold-run, or a NEMETH block whose content is line-wrapped across
+					// several "words"), or the STRING just pushed above.
+					if (pendingSpace) {
+						if (
+							currentToken.token === tokens.STRING ||
+							currentToken.token === tokens.BOLD ||
+							currentToken.token === tokens.ITALIC ||
+							currentToken.token === tokens.NEMETH
+						) {
+							currentToken.add_character(' ');
+						} else if (currentToken.token === tokens.PARA && currentToken.children.length > 0) {
+							currentToken.children[currentToken.children.length - 1].add_character(' ');
+						}
+						pendingSpace = false;
 					}
 
 					for (let i = 0; i < word.length; i++) {
 						const firsttwo = word.substring(i, i + 2);
-						switch (firsttwo) {
-							case tokenStrings.NEMETHSTART:
-							// Close STRING token if we're in one
-							if (currentToken.token === tokens.STRING) {
-								currentToken = currentToken.parent;
-							}
-								currentToken = currentToken.push(tokens.NEMETH);
-								i++;
-								continue;
-							case tokenStrings.NEMETHSTOP:
-								// A NEMETH block opened mid-word/mid-line (via NEMETHSTART above) closes here 
-								if (currentToken.token === tokens.NEMETH) currentToken = currentToken.parent;
-								i++;
-								continue;
-							case tokenStrings.BOLD:
-								if (currentToken.token === tokens.BOLD) currentToken = currentToken.parent;
-								else currentToken = currentToken.push(tokens.BOLD);
-								i++;
-								continue;
-							case tokenStrings.ITALIC:
-								if (currentToken.token === tokens.ITALIC) currentToken = currentToken.parent;
-								else currentToken = currentToken.push(tokens.ITALIC);
-								i++;
-								continue;
-							default:
-								currentToken.add_character(word[i]);
+						const marker = MARKERS[firsttwo];
+						if (marker) {
+							currentToken = applyMarker(currentToken, marker);
+							i++;
+							continue;
 						}
+						currentToken.add_character(word[i]);
 					}
 
-					if (needsStringToken && currentToken.token === tokens.STRING) {
-						if (currentToken.get_value().endsWith(' ')) {
-							currentToken.value = currentToken.value.slice(0, -1);
-						}
-						// Don't close the STRING token yet - keep it open for consecutive words
-						// currentToken = currentToken.parent;
-					}
-
-					if (
-						currentToken.token === tokens.STRING ||
-						currentToken.token === tokens.NEMETH ||
-						currentToken.token === tokens.BOLD ||
-						currentToken.token === tokens.ITALIC
-					) {
-						currentToken.add_character(' ');
-					}
+					pendingSpace = true;
 				});
-
-				if (currentToken.get_value && currentToken.get_value().endsWith(' ')) {
-					currentToken.value = currentToken.value.slice(0, -1);
-				}
 			}
-			
+
 			// A single '\n' inside a paragraph is a line wrap, not a paragraph break
 			// (that's '\n\n', split out above) -- it still stands for whitespace between
 			// the last word of this line and the first word of the next, or the last
 			// word of one line and the last word of the next line fuse together with
 			// no separator at all. NEMETH content preserves the literal newline instead
-			// (verbatim rendering of Nemeth math); everything else gets a space.
+			// (verbatim rendering of Nemeth math); everything else defers to the same
+			// pendingSpace flush the word loop above uses.
 			if (lineIndex < lines.length - 1) {
 				if (currentToken.token === tokens.NEMETH) {
 					currentToken.add_character('\n');
-				} else if (
-					currentToken.token === tokens.STRING ||
-					currentToken.token === tokens.BOLD ||
-					currentToken.token === tokens.ITALIC
-				) {
-					currentToken.add_character(' ');
+				} else {
+					pendingSpace = true;
 				}
 			}
 		});
