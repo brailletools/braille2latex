@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// braille2latex — Convert a BRF (ASCII Braille) file to LaTeX, Markdown, or any
+// braille-bridge — Convert a BRF (ASCII Braille) file to LaTeX, Markdown, or any
 // Pandoc-supported format, from the command line.
 //
 // Nemeth math sections are converted via Abraham (pure JS, always available).
@@ -17,7 +17,7 @@
 // actually requested — not on every invocation.
 //
 // Usage:
-//   braille2latex <file.brf> [options]
+//   braille-bridge <file.brf> [options]
 //
 // Options:
 //   --table TABLE, --dictionary TABLE   liblouis table (default: en-ueb-g2.ctb)
@@ -72,7 +72,7 @@ const filePath = args[0];
 
 if (!filePath) {
 	console.error(
-		'Usage: braille2latex <file.brf> [--table TABLE | --dictionary TABLE] [--format FORMAT] [--full-doc] [--braille-only] [-o FILE]'
+		'Usage: braille-bridge <file.brf> [--table TABLE | --dictionary TABLE] [--format FORMAT] [--full-doc] [--braille-only] [-o FILE]'
 	);
 	process.exit(1);
 }
@@ -90,8 +90,8 @@ if (!brailleOnly) {
 	louTranslatePath = resolveLouTranslate();
 	if (!louTranslatePath) {
 		process.stderr.write(
-			'[braille2latex] lou_translate not found; text sections will be shown as Unicode braille.\n' +
-				'[braille2latex] Install it with: npx liblouis-fetch  (or set LOU_TRANSLATE_PATH).\n'
+			'[braille-bridge] lou_translate not found; text sections will be shown as Unicode braille.\n' +
+				'[braille-bridge] Install it with: npx liblouis-fetch  (or set LOU_TRANSLATE_PATH).\n'
 		);
 	}
 }
@@ -156,7 +156,7 @@ if (format === 'latex' || format === 'markdown') {
 			}
 		}
 	} catch (error) {
-		console.error(`[braille2latex] --format ${format} failed: ${error.message}`);
+		console.error(`[braille-bridge] --format ${format} failed: ${error.message}`);
 		process.exit(1);
 	}
 }

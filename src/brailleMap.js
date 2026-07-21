@@ -153,7 +153,7 @@ export function nemeth_to_latex(text) {
 			}
 			
 		} catch (error) {
-			console.error("Braille2latex failed for braille: " + braille);
+			console.error("braille-bridge failed for braille: " + braille);
 			console.error("Original text: " + line);
 			console.error(error);
 			latex = '';

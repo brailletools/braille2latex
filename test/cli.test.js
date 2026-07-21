@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const cliPath = path.join(__dirname, '../bin/braille2latex.js');
+const cliPath = path.join(__dirname, '../bin/braille-bridge.js');
 
 /** Runs the CLI against a fresh fixture file, cleaning it up afterward. */
 function withFixture(name, content, run) {

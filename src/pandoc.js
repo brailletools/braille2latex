@@ -15,7 +15,7 @@
 // for a worked example, and its doc comments for why).
 //
 // Node's entry point (used automatically when this file is imported from
-// Node, e.g. by bin/braille2latex.js) reads the wasm binary straight from
+// Node, e.g. by bin/braille-bridge.js) reads the wasm binary straight from
 // disk (already unpacked by npm/pnpm install) — no network fetch, no
 // top-level-await bundler restrictions, nothing extra to configure there.
 //

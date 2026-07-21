@@ -12,7 +12,7 @@ let liblouisReadyPromise = null;
  * Expects `globalThis.LiblouisEasyApiAsync` to already be available — load the
  * vendored easy-api.js (fetched at build time by @brailletools/liblouis-env-web's
  * `liblouis-fetch-web`) via a plain <script> tag in your app's HTML template
- * before calling configure(). braille2latex doesn't fetch or inject that script
+ * before calling configure(). braille-bridge doesn't fetch or inject that script
  * itself: where static assets live and how they're loaded is app-specific (e.g.
  * SvelteKit's app.html), so that's the consuming app's job, not this library's.
  *
@@ -34,7 +34,7 @@ let liblouisReadyPromise = null;
  *
  *   // +page.svelte
  *   import { base } from '$app/paths';
- *   import { configure } from '@brailletools/braille2latex';
+ *   import { configure } from '@brailletools/braille-bridge';
  *   const b = base === '/' ? '' : base;
  *   configure({
  *     liblouisCapiUrl:    `.${b}/liblouis/build-no-tables-utf32.js`,
@@ -47,7 +47,7 @@ export function configure({ liblouisCapiUrl, liblouisEasyApiUrl, liblouisTablesU
 		const EasyApiAsync = globalThis.LiblouisEasyApiAsync;
 		if (!EasyApiAsync) {
 			throw new Error(
-				'[braille2latex] configure() needs `LiblouisEasyApiAsync` to already be available as a ' +
+				'[braille-bridge] configure() needs `LiblouisEasyApiAsync` to already be available as a ' +
 				'global. Load the vendored easy-api.js (see @brailletools/liblouis-env-web) via a <script> ' +
 				'tag before calling configure() — see this package\'s README for a working example.'
 			);
@@ -811,7 +811,7 @@ export function lex(text) {
 
 // Same $...$/$$...$$ math delimiters segmentMixedLatex()/extractMathBody()
 // in document.js already recognize for LaTeX -- Pandoc's default Markdown
-// math extension uses identical syntax, so braille2latex speaks one math
+// math extension uses identical syntax, so braille-bridge speaks one math
 // delimiter dialect across both target formats.
 const MARKDOWN_MATH_RE = /\$\$([\s\S]*?)\$\$|\$([^$\n]*)\$/g;
 
@@ -904,7 +904,7 @@ async function buildParaFromMarkdown(paraNode, paraSource, table, forward) {
 		child.set_value(await forward(paraSource, table));
 		flagUnsupported(
 			paraNode,
-			"This paragraph uses Markdown syntax braille2latex doesn't parse (e.g. a heading, list, table, or code block) — shown as plain translated text rather than being lost."
+			"This paragraph uses Markdown syntax braille-bridge doesn't parse (e.g. a heading, list, table, or code block) — shown as plain translated text rather than being lost."
 		);
 		return;
 	}

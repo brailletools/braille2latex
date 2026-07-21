@@ -1,4 +1,4 @@
-# @brailletools/braille2latex
+# @brailletools/braille-bridge
 
 JavaScript library and CLI for converting Braille Readiness Format (BRF) files to LaTeX,
 Markdown, or (via [Pandoc](https://pandoc.org/)) any other format Pandoc can write —
@@ -10,17 +10,17 @@ Supports Nemeth math notation and UEB text via [liblouis](https://github.com/lib
 Not yet published to the npm registry. Until then, install directly from GitHub:
 
 ```bash
-npm install github:brailletools/braille2latex
+npm install github:brailletools/braille-bridge
 ```
 
 Once published, the usual form will work:
 
 ```bash
-npm install @brailletools/braille2latex
+npm install @brailletools/braille-bridge
 ```
 
 `configure()` (browser-side back-translation, see below) needs `liblouis.EasyApiAsync`
-loaded as a global via a `<script>` tag; braille2latex has no npm dependency for that.
+loaded as a global via a `<script>` tag; braille-bridge has no npm dependency for that.
 
 This package depends on [`pandoc-wasm`](https://github.com/pandoc/pandoc-wasm) (~56MB
 unpacked) for `convertText()`/`convertToBinaryFormat()`/`convertFromBinaryFormat()` and
@@ -39,7 +39,7 @@ Must be called once before `DualDocument.fromBraille()`/`fromMarkdown()` (or any
 translation in this package that doesn't supply its own `translate`/`translateForward`
 override). Provides the URLs to the liblouis WebAssembly build. Requires
 `liblouis.EasyApiAsync` to already be available as a global — load the vendored
-`easy-api.js` via a `<script>` tag before calling `configure()`; braille2latex doesn't fetch
+`easy-api.js` via a `<script>` tag before calling `configure()`; braille-bridge doesn't fetch
 or inject that script itself (see [Usage in SvelteKit / browser](#usage-in-sveltekit--browser)
 below). `liblouisTablesUrl` is only needed for a "no-tables" build (tables loaded on demand
 rather than compiled in).
@@ -116,7 +116,7 @@ paragraph/equation granularity (not full-document, not character-by-character). 
 the same `lex()`/`to_latex()`/`to_markdown()` tree.
 
 ```js
-import { DualDocument } from '@brailletools/braille2latex';
+import { DualDocument } from '@brailletools/braille-bridge';
 
 const doc = await DualDocument.fromBraille(brfText, { table: 'en-ueb-g2.ctb' });
 doc.brailleText; // current braille source
@@ -154,7 +154,7 @@ throughout this package, for testing without a live liblouis worker.
 
 liblouis's own npm packages (`liblouis`/`liblouis-build`) are unmaintained (years behind current liblouis) and no longer importable as a bundler dependency. Fetch a current browser build instead with
 [`@brailletools/liblouis-env-web`](https://github.com/brailletools/liblouis-env/tree/main/js/packages/web),
-which writes a `manifest.json` describing what it fetched (filenames and build variant vary by pinned upstream commit — read the manifest rather than hardcoding them), then load the vendored `easy-api.js` as a plain `<script>` so it's available as a global before `configure()` runs — braille2latex itself has no dependency on `@brailletools/liblouis-env-web` or on any script-loading mechanism; where static assets live and how they're loaded is app-specific, so that step belongs here, in the consuming app:
+which writes a `manifest.json` describing what it fetched (filenames and build variant vary by pinned upstream commit — read the manifest rather than hardcoding them), then load the vendored `easy-api.js` as a plain `<script>` so it's available as a global before `configure()` runs — braille-bridge itself has no dependency on `@brailletools/liblouis-env-web` or on any script-loading mechanism; where static assets live and how they're loaded is app-specific, so that step belongs here, in the consuming app:
 
 ```json
 // package.json
@@ -172,7 +172,7 @@ which writes a `manifest.json` describing what it fetched (filenames and build v
 ```js
 // +page.svelte
 import { base } from '$app/paths';
-import { configure, whenReady, DualDocument } from '@brailletools/braille2latex';
+import { configure, whenReady, DualDocument } from '@brailletools/braille-bridge';
 import manifest from '../../static/liblouis/manifest.json';
 
 const b = base === '/' ? '' : base;
@@ -191,7 +191,7 @@ const latex = doc.latexText;
 ## Command-line usage
 
 ```bash
-braille2latex <file.brf> [--table TABLE | --dictionary TABLE] [--format FORMAT] [--full-doc] [--braille-only] [-o FILE]
+braille-bridge <file.brf> [--table TABLE | --dictionary TABLE] [--format FORMAT] [--full-doc] [--braille-only] [-o FILE]
 ```
 
 - `--table TABLE` / `--dictionary TABLE` — liblouis table to translate with (default: `en-ueb-g2.ctb`).
@@ -223,10 +223,10 @@ npx liblouis-fetch
 Examples:
 
 ```bash
-braille2latex "Sample Quiz.brf" --full-doc -o quiz.tex
-braille2latex "Sample Quiz.brf" --dictionary en-ueb-g2.ctb
-braille2latex "Sample Quiz.brf" --format rst
-braille2latex "Sample Quiz.brf" --format docx -o quiz.docx
+braille-bridge "Sample Quiz.brf" --full-doc -o quiz.tex
+braille-bridge "Sample Quiz.brf" --dictionary en-ueb-g2.ctb
+braille-bridge "Sample Quiz.brf" --format rst
+braille-bridge "Sample Quiz.brf" --format docx -o quiz.docx
 ```
 
 ## Credits

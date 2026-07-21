@@ -2,7 +2,7 @@
 // DualDocument: a canonical braille<->LaTeX document model that keeps both
 // representations, plus per-top-level-node status, in sync at paragraph/equation
 // granularity. Built on top of processFile.js's existing Element tree (lex()/
-// to_latex()) rather than replacing it — see braille2latex README and the
+// to_latex()) rather than replacing it — see braille-bridge README and the
 // webeditor side-by-side sync plan for the rationale.
 //
 // Terminology: "top-level nodes" are ROOT's direct children (PARA or EQUATION,
