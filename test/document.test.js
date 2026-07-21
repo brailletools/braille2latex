@@ -187,12 +187,14 @@ test('applyLatexEdit deletes a whole Nemeth segment atomically, leaving no orpha
 });
 
 test('applyLatexEdit falls back to whole-node regeneration when childRangesReliable is false, without corrupting anything', async () => {
-	// 'abc_.bold_.' hits a separate, pre-existing lexer quirk (a BOLD marker
-	// landing directly against a word with no space nests it under the STRING
-	// node instead of as a PARA sibling), which the marker-only scanner can't
-	// predict — see the equivalent lex()-level test in smoke.test.js. This proves
-	// the *edit* path degrades safely too, not just the scan/flag itself.
-	const doc = await makeDoc('abc_.bold_.');
+	// 'abc_:def' has a stray NEMETHSTOP with no matching NEMETHSTART. lex()
+	// correctly treats this as a no-op (the text stays one continuous STRING run
+	// -- see applyMarker()'s 'close' case), but the marker-only scanner in
+	// computeTopLevelBrailleSpans can't tell a stray close marker from a real one
+	// until it's too late, so it splits its guess into two 'text' spans where the
+	// real tree only has one STRING child — a genuine, expected mismatch. This
+	// proves the *edit* path degrades safely too, not just the scan/flag itself.
+	const doc = await makeDoc('abc_:def');
 	const para = doc.topLevelNodes[0];
 	assert.equal(para.token, 'PARA');
 	assert.equal(para.childRangesReliable, false, 'sanity check: this fixture must hit the fallback path');
